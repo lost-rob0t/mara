@@ -29,6 +29,10 @@ jobs:
             (package-refresh-contents)
             (package-install (quote gptel)))'
       - name: Byte compile
-        run: emacs -Q --batch -L emacs --eval '(byte-recompile-directory "emacs" 0 t)'
+        run: >-
+          emacs -Q --batch -l package --eval '(package-initialize)'
+          -L emacs -f batch-byte-compile emacs/*.el
       - name: Run ERT
-        run: emacs -Q --batch -L emacs -L test -l test/mara-test.el -f ert-run-tests-batch-and-exit
+        run: >-
+          emacs -Q --batch -l package --eval '(package-initialize)'
+          -L emacs -L test -l test/mara-test.el -f ert-run-tests-batch-and-exit
