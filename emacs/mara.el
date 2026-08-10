@@ -15,6 +15,10 @@
 (require 'mara-provider-gptel)
 (require 'mara-ui)
 
+(defconst mara-source-directory
+  (file-name-directory (or load-file-name buffer-file-name))
+  "Directory containing the loaded Mara Emacs runtime.")
+
 (defun mara--initialize (&optional profile)
   "Initialize persistent state for PROFILE."
   (mara-profile-load profile)
@@ -40,6 +44,33 @@
   "Open Mara's red-room profile without silently changing relationship state."
   (interactive)
   (mara "red-room"))
+
+;;;###autoload
+(defun update-mara ()
+  "Fast-forward the local Mara checkout with Git.
+
+This updates the checkout containing the currently loaded Mara runtime.  It
+never creates a merge commit.  Restart Emacs after a successful update so the
+new runtime is loaded cleanly."
+  (interactive)
+  (unless (executable-find "git")
+    (user-error "git is not available in PATH"))
+  (let* ((root (file-name-as-directory
+                (expand-file-name ".." mara-source-directory)))
+         (default-directory root)
+         (buffer (get-buffer-create "*Mara Update*")))
+    (unless (file-directory-p (expand-file-name ".git" root))
+      (user-error "Mara checkout is not a Git repository: %s" root))
+    (with-current-buffer buffer
+      (erase-buffer))
+    (let ((status (call-process "git" nil buffer t "pull" "--ff-only")))
+      (if (zerop status)
+          (progn
+            (message "Mara updated in %s; restart Emacs to load changes" root)
+            (when (called-interactively-p 'interactive)
+              (display-buffer buffer)))
+        (display-buffer buffer)
+        (user-error "Mara update failed; see %s" (buffer-name buffer))))))
 
 ;;;###autoload
 (defun mara-enable-relationship-override (phase reason)
