@@ -1,0 +1,24 @@
+name: Emacs Lisp tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/emacs-runtime-v0.1
+
+permissions:
+  contents: read
+
+jobs:
+  ert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Emacs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes emacs-nox
+      - name: Byte compile
+        run: emacs -Q --batch -L emacs --eval '(byte-recompile-directory "emacs" 0 t)'
+      - name: Run ERT
+        run: emacs -Q --batch -L emacs -L test -l test/mara-test.el -f ert-run-tests-batch-and-exit
