@@ -81,5 +81,13 @@
                      (mara--alist-get 'content
                                       (car (mara-session-messages mara-session-current))))))))
 
+(ert-deftest mara-gptel-conversation-uses-persistent-history ()
+  (should
+   (equal '("hello" "hi" "continue")
+          (mara-gptel--conversation
+           '(((role . "user") (content . "hello"))
+             ((role . "assistant") (content . "hi"))
+             ((role . "user") (content . "continue")))))))
+
 (provide 'mara-test)
 ;;; mara-test.el ends here

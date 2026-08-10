@@ -18,6 +18,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes emacs-nox
+      - name: Install gptel
+        run: |
+          emacs -Q --batch --eval '(progn
+            (require (quote package))
+            (setq package-archives
+                  (quote (("gnu" . "https://elpa.gnu.org/packages/")
+                          ("melpa" . "https://melpa.org/packages/"))))
+            (package-initialize)
+            (package-refresh-contents)
+            (package-install (quote gptel)))'
       - name: Byte compile
         run: emacs -Q --batch -L emacs --eval '(byte-recompile-directory "emacs" 0 t)'
       - name: Run ERT

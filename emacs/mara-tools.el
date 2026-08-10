@@ -35,19 +35,6 @@ CALLBACK receives RESULT and an error flag."
              (funcall callback (funcall (mara-tool-function tool) input) nil)
            (error (funcall callback (format "%S" err) t)))))))))
 
-(defun mara-tools-provider-definitions ()
-  "Return Anthropic-compatible definitions for registered tools."
-  (let (definitions)
-    (maphash
-     (lambda (_name tool)
-       (when (mara-tools-authorized-p (mara-tool-capability tool))
-         (push `((name . ,(mara-tool-name tool))
-                 (description . ,(mara-tool-description tool))
-                 (input_schema . ,(mara-tool-input-schema tool)))
-               definitions)))
-     mara-tools-registry)
-    (nreverse definitions)))
-
 (defun mara-tools--status (_input)
   "Return inspectable non-secret Mara state."
   (json-serialize

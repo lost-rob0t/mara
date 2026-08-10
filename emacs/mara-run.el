@@ -43,8 +43,7 @@
             (mara-provider-send
              (mara-run-provider run)
              (list :system (mara-context-system-prompt)
-                   :messages (mara-run-messages run)
-                   :tools (mara-tools-provider-definitions))
+                   :messages (mara-run-messages run))
              (lambda (response) (mara-run--response run response))
              (lambda (error-value) (mara-run--fail run error-value)))))))
 
@@ -52,13 +51,9 @@
   "Handle normalized provider RESPONSE for RUN."
   (unless (mara-run-cancelled run)
     (let ((text (plist-get response :text))
-          (content (plist-get response :content))
           (calls (plist-get response :tool-calls)))
       (when (and text (not (string-empty-p text)))
         (funcall (mara-run-on-text run) text))
-      (setf (mara-run-messages run)
-            (append (mara-run-messages run)
-                    (list `((role . "assistant") (content . ,(vconcat content))))))
       (if calls
           (mara-run--execute-calls run calls)
         (mara-session-add-message "assistant" (or text ""))
@@ -66,22 +61,26 @@
 
 (defun mara-run--execute-calls (run calls)
   "Execute CALLS serially for RUN and continue the loop."
-  (if (> (+ (mara-run-tool-count run) (length calls)) mara-run-tool-budget)
-      (mara-run--fail run "Tool budget exceeded")
-    (mara-run--execute-call-queue run calls nil)))
+  (cond
+   ((> (+ (mara-run-tool-count run) (length calls)) mara-run-tool-budget)
+    (mara-run--fail run "Tool budget exceeded"))
+   ((>= (mara-run-turns run) mara-run-max-turns)
+    (mara-run--fail run "Maximum provider turns exceeded"))
+   (t
+    ;; gptel owns the network continuation, but this still represents another
+    ;; model/tool turn for Mara's run budget.
+    (cl-incf (mara-run-turns run))
+    (mara-run--execute-call-queue run calls nil))))
 
-(defun mara-run--execute-call-queue (run calls results)
-  "Execute pending CALLS and accumulate tool RESULTS for RUN."
+(defun mara-run--execute-call-queue (run calls _results)
+  "Execute pending CALLS for RUN through Mara's broker.
+gptel continuation callbacks carry results back into gptel's own FSM."
   (if (null calls)
-      (progn
-        (setf (mara-run-messages run)
-              (append (mara-run-messages run)
-                      (list `((role . "user") (content . ,(vconcat (nreverse results)))))))
-        (mara-run--step run))
+      nil
     (let* ((call (car calls))
            (name (mara--alist-get 'name call))
-           (id (mara--alist-get 'id call))
            (input (mara--alist-get 'input call))
+           (continuation (mara--alist-get 'continuation call))
            (fingerprint (secure-hash 'sha256 (prin1-to-string (list name input))))
            (seen (gethash fingerprint (mara-run-seen-calls run) 0)))
       (if (>= seen 2)
@@ -91,13 +90,12 @@
         (mara-tools-execute
          name input
          (lambda (result errorp)
+           (funcall continuation
+                    (if errorp
+                        (format "Mara capability/tool error: %s" result)
+                      result))
            (mara-run--execute-call-queue
-            run (cdr calls)
-            (cons `((type . "tool_result")
-                    (tool_use_id . ,id)
-                    (content . ,(format "%s" result))
-                    ,@(when errorp '((is_error . t))))
-                  results))))))))
+            run (cdr calls) nil)))))))
 
 (defun mara-run-cancel ()
   "Cancel the active Mara run."
@@ -131,4 +129,3 @@
 
 (provide 'mara-run)
 ;;; mara-run.el ends here
-

@@ -1,7 +1,7 @@
 ;;; mara.el --- Persistent companion and Emacs agent -*- lexical-binding: t; -*-
 
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
+;; Package-Requires: ((emacs "29.1") (gptel "0.9.9"))
 
 ;;; Commentary:
 ;; Entry points for the Emacs-only Mara v0.1 runtime.
@@ -12,7 +12,7 @@
 (require 'mara-profile)
 (require 'mara-relationship)
 (require 'mara-session)
-(require 'mara-provider-anthropic)
+(require 'mara-provider-gptel)
 (require 'mara-ui)
 
 (defun mara--initialize (&optional profile)
@@ -20,7 +20,7 @@
   (mara-profile-load profile)
   (mara-relationship-load)
   (mara-session-load-current)
-  (setq mara-ui-provider (make-mara-anthropic-provider)))
+  (setq mara-ui-provider (make-mara-gptel-provider)))
 
 ;;;###autoload
 (defun mara (&optional profile)
@@ -75,4 +75,3 @@
 
 (provide 'mara)
 ;;; mara.el ends here
-
