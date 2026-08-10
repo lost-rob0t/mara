@@ -30,15 +30,18 @@
        fallback))))
 
 (defun mara-state-write (path value)
-  "Atomically write VALUE as JSON to PATH."
+  "Atomically write VALUE as UTF-8 JSON to PATH."
   (make-directory (file-name-directory path) t)
-  (let ((temporary (make-temp-file "mara-state-" nil ".json")))
+  (let ((temporary (make-temp-file "mara-state-" nil ".json"))
+        (coding-system-for-write 'utf-8-unix))
     (unwind-protect
         (progn
-          (with-temp-file temporary
+          (with-temp-buffer
+            (set-buffer-file-coding-system 'utf-8-unix)
             (insert (json-serialize value
                                     :null-object nil
-                                    :false-object :json-false)))
+                                    :false-object :json-false))
+            (write-region (point-min) (point-max) temporary nil 'silent))
           (rename-file temporary path t))
       (when (file-exists-p temporary)
         (delete-file temporary))))
@@ -46,4 +49,3 @@
 
 (provide 'mara-state)
 ;;; mara-state.el ends here
-
