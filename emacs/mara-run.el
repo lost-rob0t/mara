@@ -5,6 +5,7 @@
 (require 'cl-lib)
 (require 'mara-context)
 (require 'mara-provider)
+(require 'mara-relationship)
 (require 'mara-session)
 (require 'mara-tools)
 
@@ -19,6 +20,7 @@
   (when mara-run-active
     (user-error "Mara already has an active run; cancel it first"))
   (mara-session-add-message "user" user-text)
+  (mara-relationship-note-session-interaction)
   (setq mara-run-active
         (make-mara-run
          :id (mara--uuid)
