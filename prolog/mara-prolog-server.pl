@@ -2,7 +2,7 @@
 
 :- use_module(library(http/json)).
 :- use_module(library(readutil)).
-:- use_module(mara_memory).
+:- use_module('./mara-memory.pl').
 
 main :-
     set_stream(user_input, encoding(utf8)),
