@@ -11,6 +11,7 @@
 
 (defvar-local mara-ui-prompt-start nil)
 (defvar-local mara-ui-input-start nil)
+(defvar-local mara-ui-stream-active nil)
 
 (define-derived-mode mara-mode text-mode "Mara"
   "Major mode for a Mara conversation."
@@ -63,11 +64,34 @@
       (mara-ui--insert-read-only
        (format "%s: %s\n\n" speaker text)))))
 
+(defun mara-ui--stream-chunk (chunk)
+  "Append one live Mara response CHUNK without repeating the speaker label."
+  (when (and (stringp chunk) (not (string-empty-p chunk)))
+    (with-current-buffer (get-buffer-create mara-ui-buffer-name)
+      (let ((inhibit-read-only t))
+        (mara-ui--remove-prompt)
+        (goto-char (point-max))
+        (unless mara-ui-stream-active
+          (mara-ui--insert-read-only "Mara: ")
+          (setq mara-ui-stream-active t))
+        (mara-ui--insert-read-only chunk)
+        (goto-char (point-max))))))
+
+(defun mara-ui--stream-finish ()
+  "Finish the active streamed Mara response, when present."
+  (with-current-buffer (get-buffer-create mara-ui-buffer-name)
+    (when mara-ui-stream-active
+      (let ((inhibit-read-only t))
+        (goto-char (point-max))
+        (mara-ui--insert-read-only "\n\n"))
+      (setq mara-ui-stream-active nil))))
+
 (defun mara-ui-open ()
   "Open and render Mara's conversation buffer."
   (let ((buffer (get-buffer-create mara-ui-buffer-name)))
     (with-current-buffer buffer
       (mara-mode)
+      (setq mara-ui-stream-active nil)
       (let ((inhibit-read-only t))
         (erase-buffer)
         (mara-ui--insert-read-only
@@ -109,15 +133,16 @@ Empty input and submits while no prompt is available are ignored."
       (mara-ui--append "You" message-text)
       (mara-run-start
        mara-ui-provider message-text
-       (lambda (chunk)
-         (mara-ui--append "Mara" chunk))
+       #'mara-ui--stream-chunk
        (lambda (_response)
+         (mara-ui--stream-finish)
          (with-current-buffer (get-buffer-create mara-ui-buffer-name)
            (mara-ui--prompt)
            (when (fboundp 'evil-insert-state)
              (evil-insert-state)))
          (message "Mara finished"))
        (lambda (error-value)
+         (mara-ui--stream-finish)
          (mara-ui--append "Mara error" (format "%S" error-value))
          (with-current-buffer (get-buffer-create mara-ui-buffer-name)
            (mara-ui--prompt)
@@ -128,6 +153,7 @@ Empty input and submits while no prompt is available are ignored."
   "Cancel Mara's active request and restore the input prompt."
   (interactive)
   (mara-run-cancel)
+  (mara-ui--stream-finish)
   (with-current-buffer (get-buffer-create mara-ui-buffer-name)
     (unless (and (markerp mara-ui-input-start)
                  (marker-position mara-ui-input-start))
