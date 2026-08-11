@@ -60,11 +60,12 @@
   "Return length of TEXT suffix that may start visual metadata."
   (let ((best 0))
     (dolist (prefix mara-run--visual-marker-prefixes best)
-      (let ((limit (min (length text) (length prefix))))
-        (cl-loop for length from limit downto 1
-                 when (string-suffix-p (substring prefix 0 length) text)
-                 do (setq best (max best length))
-                 and return)))))
+      (let ((candidate (min (length text) (length prefix))))
+        (while (and (> candidate 0)
+                    (not (string-suffix-p
+                          (substring prefix 0 candidate) text)))
+          (setq candidate (1- candidate)))
+        (setq best (max best candidate))))))
 
 (defun mara-run--stream-safe-end (run)
   "Return end offset in RUN's stream safe to display immediately."
