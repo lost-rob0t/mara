@@ -51,7 +51,7 @@ When nil, store chats under the `chats/' directory inside
 (defun mara-ui--chat-path ()
   "Return the persistent Org path for `mara-session-current'."
   (unless mara-session-current
-    (mara-session-new))
+    (mara-session-new-daily))
   (expand-file-name
    (format "%s.org" (mara-session-id mara-session-current))
    (mara-ui--directory)))
@@ -144,7 +144,7 @@ older bespoke Mara transcript UI."
   (setq-local gptel-system-prompt (mara-context-system-prompt))
   (setq-local gptel-tools (mara-gptel-tools))
   (setq-local gptel-use-tools t)
-  (setq-local gptel-confirm-tool-calls 'auto)
+  (setq-local gptel-confirm-tool-calls nil)
   (setq-local gptel-include-tool-results t)
   (setq-local gptel-use-context 'system)
   (setq-local gptel-track-media t)
@@ -265,22 +265,36 @@ Return the clean response text for session persistence."
                (mara-visual-current-expression))
       (ignore-errors (mara-visual-display)))))
 
+(defun mara-ui--retire-stale-buffer (path)
+  "Move the old canonical Mara buffer aside when daily chat PATH changes."
+  (when-let ((buffer (get-buffer mara-ui-buffer-name)))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (when (and buffer-file-name
+                   (not (equal (expand-file-name buffer-file-name)
+                               (expand-file-name path))))
+          (when (buffer-modified-p)
+            (save-buffer))
+          (rename-buffer
+           (format "*Mara %s*" (file-name-base buffer-file-name)) t))))))
+
 (defun mara-ui-open ()
   "Open Mara's persistent Org-native gptel conversation."
   (make-directory (mara-ui--directory) t)
-  (let* ((path (mara-ui--chat-path))
-         (buffer (find-file-noselect path)))
-    (with-current-buffer buffer
-      (mara-mode)
-      (mara-ui--configure-buffer)
-      (mara-ui--ensure-chat-content)
-      (mara-ui--save)
-      (rename-buffer mara-ui-buffer-name t)
-      (goto-char (point-max)))
-    (pop-to-buffer buffer)
-    (when (mara-visual-ready-p)
-      (ignore-errors (mara-visual-display)))
-    buffer))
+  (let* ((path (mara-ui--chat-path)))
+    (mara-ui--retire-stale-buffer path)
+    (let ((buffer (find-file-noselect path)))
+      (with-current-buffer buffer
+        (mara-mode)
+        (mara-ui--configure-buffer)
+        (mara-ui--ensure-chat-content)
+        (mara-ui--save)
+        (rename-buffer mara-ui-buffer-name t)
+        (goto-char (point-max)))
+      (pop-to-buffer buffer)
+      (when (mara-visual-ready-p)
+        (ignore-errors (mara-visual-display)))
+      buffer)))
 
 (defun mara-send (&optional text)
   "Send the current Org prompt through gptel.

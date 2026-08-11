@@ -87,7 +87,7 @@
       (let* ((tool (car (mara-gptel-tools)))
              (function (gptel-tool-function tool)))
         (should (gptel-tool-async tool))
-        (should (gptel-tool-confirm tool))
+        (should-not (gptel-tool-confirm tool))
         (funcall function
                  (lambda (value) (setq callback-value value))
                  "hello")))

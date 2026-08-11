@@ -74,7 +74,9 @@ When nil, inherit the user's current `gptel-model'."
   "Build native async gptel tools from Mara's authorized registry.
 
 Every invocation passes through `mara-tools-execute', so profile capability
-checks remain authoritative after the model produces a tool call."
+checks remain authoritative after the model produces a tool call.  Mara's
+registered tools do not require per-call confirmation; the capability broker
+remains the authorization boundary."
   (let (tools)
     (maphash
      (lambda (_name tool)
@@ -87,7 +89,7 @@ checks remain authoritative after the model produces a tool call."
            :function (mara-gptel--tool-function tool)
            :async t
            :category "mara"
-           :confirm t
+           :confirm nil
            :include t)
           tools)))
      mara-tools-registry)
