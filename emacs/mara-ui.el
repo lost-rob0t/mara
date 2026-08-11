@@ -4,6 +4,7 @@
 
 (require 'subr-x)
 (require 'mara-run)
+(require 'mara-visual)
 
 (defvar mara-ui-buffer-name "*Mara*")
 (defvar mara-ui-provider nil)
@@ -17,7 +18,8 @@
   (setq-local word-wrap t)
   (setq-local buffer-read-only nil)
   (define-key mara-mode-map (kbd "RET") #'mara-send)
-  (define-key mara-mode-map (kbd "C-c C-c") #'mara-cancel))
+  (define-key mara-mode-map (kbd "C-c C-c") #'mara-cancel)
+  (define-key mara-mode-map (kbd "C-c C-v") #'mara-visual-render-scene))
 
 (defun mara-ui--insert-read-only (text)
   "Insert TEXT as protected transcript content."
@@ -86,7 +88,9 @@
     (with-current-buffer buffer
       (goto-char (point-max))
       (when (fboundp 'evil-insert-state)
-        (evil-insert-state)))))
+        (evil-insert-state)))
+    (when (mara-visual-ready-p)
+      (mara-visual-display))))
 
 (defun mara-send (&optional text)
   "Send TEXT to Mara asynchronously.
@@ -136,7 +140,9 @@ When TEXT is nil, send the contents of Mara's editable input region."
   (evil-define-key 'insert mara-mode-map (kbd "RET") #'mara-send)
   (evil-define-key 'normal mara-mode-map (kbd "RET") #'mara-send)
   (evil-define-key '(insert normal) mara-mode-map
-    (kbd "C-c C-c") #'mara-cancel))
+    (kbd "C-c C-c") #'mara-cancel)
+  (evil-define-key '(insert normal) mara-mode-map
+    (kbd "C-c C-v") #'mara-visual-render-scene))
 
 (provide 'mara-ui)
 ;;; mara-ui.el ends here

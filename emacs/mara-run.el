@@ -7,6 +7,7 @@
 (require 'mara-provider)
 (require 'mara-session)
 (require 'mara-tools)
+(require 'mara-visual)
 
 (cl-defstruct mara-run
   id provider messages turns tool-count seen-calls timer handle cancelled
@@ -50,14 +51,17 @@
 (defun mara-run--response (run response)
   "Handle normalized provider RESPONSE for RUN."
   (unless (mara-run-cancelled run)
-    (let ((text (plist-get response :text))
-          (calls (plist-get response :tool-calls)))
+    (let* ((calls (plist-get response :tool-calls))
+           (raw-text (plist-get response :text))
+           (text (if calls
+                     raw-text
+                   (mara-visual-consume-response (or raw-text "")))))
       (when (and text (not (string-empty-p text)))
         (funcall (mara-run-on-text run) text))
       (if calls
           (mara-run--execute-calls run calls)
-        (mara-session-add-message "assistant" (or text ""))
-        (mara-run--finish run response)))))
+        (mara-session-add-message "assistant" text)
+        (mara-run--finish run (plist-put response :text text))))))
 
 (defun mara-run--execute-calls (run calls)
   "Execute CALLS serially for RUN and continue the loop."
@@ -102,7 +106,8 @@ gptel continuation callbacks carry results back into gptel's own FSM."
   (interactive)
   (when mara-run-active
     (setf (mara-run-cancelled mara-run-active) t)
-    (when-let ((timer (mara-run-timer mara-run-active))) (cancel-timer timer))
+    (when-let ((timer (mara-run-timer mara-run-active)))
+      (cancel-timer timer))
     (mara-provider-cancel (mara-run-provider mara-run-active)
                           (mara-run-handle mara-run-active))
     (setq mara-run-active nil)
@@ -115,7 +120,8 @@ gptel continuation callbacks carry results back into gptel's own FSM."
 
 (defun mara-run--finish (run response)
   "Finish RUN successfully with RESPONSE."
-  (when-let ((timer (mara-run-timer run))) (cancel-timer timer))
+  (when-let ((timer (mara-run-timer run)))
+    (cancel-timer timer))
   (setq mara-run-active nil)
   (funcall (mara-run-on-done run) response))
 
@@ -123,7 +129,8 @@ gptel continuation callbacks carry results back into gptel's own FSM."
   "Finish RUN with ERROR-VALUE."
   (unless (mara-run-cancelled run)
     (setf (mara-run-cancelled run) t)
-    (when-let ((timer (mara-run-timer run))) (cancel-timer timer))
+    (when-let ((timer (mara-run-timer run)))
+      (cancel-timer timer))
     (setq mara-run-active nil)
     (funcall (mara-run-on-error run) error-value)))
 

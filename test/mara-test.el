@@ -14,7 +14,8 @@
            (setq mara-profile-current nil
                  mara-identity-current nil
                  mara-relationship-current nil
-                 mara-session-current nil)
+                 mara-session-current nil
+                 mara-visual-current nil)
            ,@body)
        (delete-directory mara-data-directory t))))
 
@@ -88,6 +89,29 @@
            '(((role . "user") (content . "hello"))
              ((role . "assistant") (content . "hi"))
              ((role . "user") (content . "continue")))))))
+
+(ert-deftest mara-visual-response-marker-is-hidden ()
+  (pcase-let ((`(,text . ,expression)
+               (mara-visual--parse-response
+                "Yeah, that tracks.\n[[mara-expression:amused]]")))
+    (should (equal "Yeah, that tracks." text))
+    (should (equal "amused" expression))))
+
+(ert-deftest mara-visual-unknown-response-marker-is-still-hidden ()
+  (pcase-let ((`(,text . ,expression)
+               (mara-visual--parse-response
+                "Nope.\n[[mara-expression:laser-eyes]]")))
+    (should (equal "Nope." text))
+    (should-not expression)))
+
+(ert-deftest mara-context-includes-visual-reaction-protocol ()
+  (mara-test-with-state
+    (mara-profile-load)
+    (mara-relationship-load)
+    (should
+     (string-match-p
+      "mara-expression:NAME"
+      (mara-context-system-prompt)))))
 
 (provide 'mara-test)
 ;;; mara-test.el ends here
