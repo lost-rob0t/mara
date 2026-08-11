@@ -10,6 +10,7 @@
 (require 'cl-lib)
 (require 'gptel-request)
 (require 'mara-tools)
+(require 'subr-x)
 
 (defcustom mara-gptel-backend nil
   "gptel backend used by Mara.
