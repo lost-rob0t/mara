@@ -8,6 +8,7 @@
 (require 'mara-relationship)
 (require 'mara-memory)
 (require 'mara-brain)
+(require 'mara-session)
 (require 'mara-visual)
 
 (defcustom mara-context-memory-limit 6
@@ -65,6 +66,7 @@
           (if override
               (format "Active relationship override (explicit, not organic): %S" override)
             "No relationship override is active."))
+         (previous-day-text (mara-session-previous-day-context))
          (memory-text (mara-context--retrieved-memory-text query)))
     (mapconcat
      #'identity
@@ -80,6 +82,7 @@
        override-text
        (format "Effective phase: %s. Never describe an override-selected phase as organically reached."
                (mara-relationship-effective-phase))
+       previous-day-text
        memory-text
        "Native durable-memory tools are available when the active profile grants them. Search memory when prior context matters and the injected evidence is absent or uncertain. When the user explicitly states a stable preference, personal fact, ongoing project decision, commitment, or correction that is likely to matter later, use mara_memory_remember or mara_memory_supersede as appropriate. Do not persist transient chatter, speculative inferences, or sensitive facts that the user did not explicitly provide for durable use."
        (mara-visual-context-instructions)
