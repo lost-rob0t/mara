@@ -14,6 +14,7 @@
            (setq mara-profile-current nil
                  mara-identity-current nil
                  mara-relationship-current nil
+                 mara-memory-current nil
                  mara-session-current nil)
            ,@body)
        (delete-directory mara-data-directory t))))
@@ -25,6 +26,34 @@
       (mara-state-write path value)
       (should (equal "Mara" (mara--alist-get 'name (mara-state-read path nil))))
       (should (eq t (mara--alist-get 'enabled (mara-state-read path nil)))))))
+
+(ert-deftest mara-memory-round-trip ()
+  (mara-test-with-state
+    (mara-memory-load)
+    (let ((id (mara-memory-add
+               :kind "profile"
+               :subject "user"
+               :predicate "favorite_editor"
+               :object "emacs"
+               :summary "User prefers Emacs"
+               :confidence 1.0
+               :importance 0.8)))
+      (setq mara-memory-current nil)
+      (mara-memory-load)
+      (let ((record (mara-memory-find-latest "user" "favorite_editor")))
+        (should (equal id (mara--alist-get 'id record)))
+        (should (equal "emacs" (mara--alist-get 'object record)))))))
+
+(ert-deftest mara-relationship-interest-memory-supersedes-old-value ()
+  (mara-test-with-state
+    (mara-profile-load)
+    (mara-relationship-load)
+    (mara-relationship-set-interest 'userInterest "affirmative")
+    (mara-relationship-set-interest 'userInterest "declined")
+    (let* ((latest (mara-memory-find-latest "user" "relationship_interest"))
+           (supersedes (mara--alist-get 'supersedes latest)))
+      (should (equal "declined" (mara--alist-get 'object latest)))
+      (should (= 1 (length supersedes))))))
 
 (ert-deftest mara-override-preserves-organic-state ()
   (mara-test-with-state
