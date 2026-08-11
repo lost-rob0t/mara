@@ -161,6 +161,7 @@ The subprocess is started lazily by `mara-prolog-start' or the first call."
              :buffer buffer
              :stderr stderr-buffer
              :command (list (mara-prolog-runtime-program runtime)
+                            "-f" "none"
                             "-q"
                             "-s" (mara-prolog-runtime-server-file runtime)
                             "--")
