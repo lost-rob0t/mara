@@ -62,8 +62,20 @@
                         (format "Could not refresh Prolog relationship state: %s" err)))))
   mara-relationship-current)
 
+(defun mara-relationship--normalize-organic-arrays (organic)
+  "Return a JSON-serializable copy of ORGANIC relationship state."
+  (let ((normalized (copy-tree organic t)))
+    (dolist (field '(phaseEvidence evidence) normalized)
+      (setf (alist-get field normalized)
+            (vconcat (or (mara--alist-get field normalized) '()))))))
+
 (defun mara-relationship-save ()
   "Persist the current relationship state cache and override."
+  (let ((normalized (copy-tree mara-relationship-current t)))
+    (setf (alist-get 'organicRelationshipState normalized)
+          (mara-relationship--normalize-organic-arrays
+           (mara--alist-get 'organicRelationshipState normalized)))
+    (setq mara-relationship-current normalized))
   (mara-state-write (mara-state-path "relationship")
                     mara-relationship-current))
 
