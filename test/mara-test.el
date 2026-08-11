@@ -11,12 +11,18 @@
   `(let ((mara-data-directory (make-temp-file "mara-test-" t)))
      (unwind-protect
          (progn
+           (when (boundp 'mara-brain--runtime)
+             (mara-brain-stop)
+             (setq mara-brain--runtime nil))
            (setq mara-profile-current nil
                  mara-identity-current nil
                  mara-relationship-current nil
                  mara-memory-current nil
                  mara-session-current nil)
            ,@body)
+       (when (boundp 'mara-brain--runtime)
+         (mara-brain-stop)
+         (setq mara-brain--runtime nil))
        (delete-directory mara-data-directory t))))
 
 (ert-deftest mara-state-round-trip ()
@@ -43,6 +49,36 @@
       (let ((record (mara-memory-find-latest "user" "favorite_editor")))
         (should (equal id (mara--alist-get 'id record)))
         (should (equal "emacs" (mara--alist-get 'object record)))))))
+
+(ert-deftest mara-prolog-runtime-persists-across-calls ()
+  (let ((runtime (mara-prolog-make-runtime)))
+    (unwind-protect
+        (progn
+          (skip-unless (mara-prolog-available-p runtime))
+          (let ((first (mara-prolog-call runtime "ping")))
+            (should (equal "pong" (mara--alist-get 'status first))))
+          (let ((process (mara-prolog-runtime-process runtime)))
+            (should (process-live-p process))
+            (let ((second (mara-prolog-call runtime "ping")))
+              (should (equal "pong" (mara--alist-get 'status second))))
+            (should (eq process (mara-prolog-runtime-process runtime)))))
+      (mara-prolog-stop runtime))))
+
+(ert-deftest mara-brain-reloads-memory-without-process-restart ()
+  (mara-test-with-state
+    (skip-unless (mara-brain-available-p))
+    (mara-memory-load)
+    (mara-memory-add-relationship-signal
+     "user" "relationship_interest" "affirmative")
+    (let* ((first (mara-brain-relationship-snapshot))
+           (process (mara-prolog-runtime-process mara-brain--runtime)))
+      (should (equal "affirmative" (mara--alist-get 'userInterest first)))
+      (mara-memory-add-relationship-signal
+       "user" "relationship_interest" "declined")
+      (let ((second (mara-brain-relationship-snapshot)))
+        (should (equal "declined" (mara--alist-get 'userInterest second))))
+      (should (eq process
+                  (mara-prolog-runtime-process mara-brain--runtime))))))
 
 (ert-deftest mara-relationship-interest-memory-supersedes-old-value ()
   (mara-test-with-state
