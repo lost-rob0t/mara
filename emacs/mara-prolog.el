@@ -154,10 +154,12 @@ The subprocess is started lazily by `mara-prolog-start' or the first call."
     (setf (mara-prolog-runtime-receive-buffer runtime) "")
     (clrhash (mara-prolog-runtime-pending runtime))
     (let* ((buffer (get-buffer-create " *mara-prolog*"))
+           (stderr-buffer (get-buffer-create " *mara-prolog-stderr*"))
            (process
             (make-process
              :name "mara-prolog"
              :buffer buffer
+             :stderr stderr-buffer
              :command (list (mara-prolog-runtime-program runtime)
                             "-q"
                             "-s" (mara-prolog-runtime-server-file runtime)
