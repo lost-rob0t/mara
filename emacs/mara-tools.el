@@ -189,7 +189,7 @@ CALLBACK receives RESULT and an error flag."
      `((query . ,query)
        (backend . ,backend)
        (count . ,(length selected))
-       (memories . ,(vconcat selected)))))))
+       (memories . ,(vconcat selected))))))
 
 (defun mara-tools--remember (input)
   "Persist one durable memory from INPUT."
