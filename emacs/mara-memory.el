@@ -32,10 +32,27 @@
     (cl-incf mara-memory-revision)
     mara-memory-current))
 
+(defun mara-memory--normalize-record-arrays (record)
+  "Return a JSON-serializable copy of memory RECORD.
+
+`json-serialize' treats Lisp lists as objects.  Memory schema fields that are
+JSON arrays therefore need to be vectors at the persistence boundary, even
+though `json-parse-buffer' loads arrays as lists for the rest of Mara."
+  (let ((normalized (copy-tree record t)))
+    (dolist (field '(supports supersedes tags) normalized)
+      (setf (alist-get field normalized)
+            (vconcat (or (mara--alist-get field normalized) '()))))))
+
 (defun mara-memory-save ()
   "Persist Mara's durable memory store."
   (unless mara-memory-current
     (mara-memory-load))
+  (let ((normalized (copy-tree mara-memory-current t)))
+    (setf (alist-get 'memories normalized)
+          (vconcat
+           (mapcar #'mara-memory--normalize-record-arrays
+                   (mara-memory-records))))
+    (setq mara-memory-current normalized))
   (prog1
       (mara-state-write (mara-memory-path) mara-memory-current)
     (cl-incf mara-memory-revision)))
@@ -68,8 +85,9 @@
   (and (numberp value) (<= 0.0 value) (<= value 1.0)))
 
 (defun mara-memory--string-list-p (value)
-  "Return non-nil when VALUE is a list of strings."
-  (and (listp value) (cl-every #'stringp value)))
+  "Return non-nil when VALUE is a sequence containing only strings."
+  (or (and (listp value) (cl-every #'stringp value))
+      (and (vectorp value) (cl-every #'stringp value))))
 
 (defun mara-memory-validate (record)
   "Validate RECORD and return it, or signal `user-error'."
