@@ -14,12 +14,9 @@
     (should (equal "* Mara\n" (mara-ui--response-prefix)))))
 
 (ert-deftest mara-native-request-info-accepts-current-gptel-fsm-shape ()
-  (let ((expected '(:buffer "*Mara*" :dry-run t)))
-    (cl-letf (((symbol-function 'gptel-fsm-info)
-               (lambda (request)
-                 (should (eq request 'fake-fsm))
-                 expected)))
-      (should (eq expected (mara-ui--request-info 'fake-fsm))))))
+  (let* ((expected '(:buffer "*Mara*" :dry-run t))
+         (fsm (gptel-make-fsm :info expected)))
+    (should (eq expected (mara-ui--request-info fsm)))))
 
 (ert-deftest mara-native-prepare-request-injects-query-once ()
   (mara-test-with-state
@@ -32,7 +29,7 @@
       (let ((source (current-buffer))
             (position (copy-marker (point)))
             queries
-            interactions)
+            (interactions 0))
         (cl-letf (((symbol-function 'mara-context-system-prompt)
                    (lambda (&optional query)
                      (push query queries)
@@ -46,7 +43,7 @@
              (list :buffer source :position position :dry-run t))
             (should (equal "context:remember emacs"
                            gptel-system-prompt)))
-          (should-not interactions)
+          (should (= 0 interactions))
           (should-not (mara-session-messages mara-session-current))
           ;; Real dispatch mirrors the user once.  Re-running the transform for
           ;; a tool continuation must not duplicate that turn.
