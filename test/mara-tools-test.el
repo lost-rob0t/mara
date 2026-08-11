@@ -38,18 +38,18 @@
                   ("predicate" . "preferred_editor")
                   ("object" . "emacs")
                   ("summary" . "User prefers Emacs")))))
-             (id (mara--alist-get "memoryId" remember))
+             (id (mara--alist-get 'memoryId remember))
              (search
               (mara-tools-test--parse
                (mara-tools--memory-search
                 '(("query" . "preferred editor emacs")))))
-             (memories (mara--alist-get "memories" search)))
+             (memories (mara--alist-get 'memories search)))
         (should (stringp id))
-        (should (equal "fallback" (mara--alist-get "backend" search)))
-        (should (= 1 (mara--alist-get "count" search)))
-        (should (equal id (mara--alist-get "id" (car memories))))
+        (should (equal "fallback" (mara--alist-get 'backend search)))
+        (should (= 1 (mara--alist-get 'count search)))
+        (should (equal id (mara--alist-get 'id (car memories))))
         (should (equal "emacs"
-                       (mara--alist-get "object" (car memories))))))))
+                       (mara--alist-get 'object (car memories))))))))
 
 (ert-deftest mara-tools-memory-supersede-hides-stale-fallback-record ()
   (mara-test-with-state
@@ -61,24 +61,24 @@
                 '(("subject" . "user")
                   ("predicate" . "preferred_editor")
                   ("object" . "emacs")))))
-             (old-id (mara--alist-get "memoryId" remember))
+             (old-id (mara--alist-get 'memoryId remember))
              (replacement
               (mara-tools-test--parse
                (mara-tools--supersede-memory
                 `(("memory_id" . ,old-id)
                   ("object" . "doom-emacs")
                   ("summary" . "User now prefers Doom Emacs")))))
-             (new-id (mara--alist-get "memoryId" replacement))
+             (new-id (mara--alist-get 'memoryId replacement))
              (search
               (mara-tools-test--parse
                (mara-tools--memory-search
                 '(("query" . "preferred_editor")))))
-             (memories (mara--alist-get "memories" search)))
+             (memories (mara--alist-get 'memories search)))
         (should (not (equal old-id new-id)))
-        (should (= 1 (mara--alist-get "count" search)))
-        (should (equal new-id (mara--alist-get "id" (car memories))))
+        (should (= 1 (mara--alist-get 'count search)))
+        (should (equal new-id (mara--alist-get 'id (car memories))))
         (should (equal "doom-emacs"
-                       (mara--alist-get "object" (car memories))))))))
+                       (mara--alist-get 'object (car memories))))))))
 
 (ert-deftest mara-tools-brain-query-reports-unavailable-runtime ()
   (mara-test-with-state
@@ -88,10 +88,10 @@
              (mara-tools-test--parse
               (mara-tools--brain-query
                '(("query" . "editor"))))))
-        (should-not (mara--alist-get "available" result))
+        (should-not (mara--alist-get 'available result))
         (should (string-match-p
                  "unavailable"
-                 (mara--alist-get "reason" result)))))))
+                 (mara--alist-get 'reason result)))))))
 
 (ert-deftest mara-context-explains-native-memory-tool-policy ()
   (mara-test-with-state
