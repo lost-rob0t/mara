@@ -68,17 +68,15 @@ though `json-parse-buffer' loads arrays as lists for the rest of Mara."
      (t nil))))
 
 (defun mara-memory-find-latest (subject predicate)
-  "Return the newest record matching SUBJECT and PREDICATE, or nil."
-  (car
-   (sort
-    (cl-remove-if-not
-     (lambda (record)
-       (and (equal subject (mara--alist-get 'subject record))
-            (equal predicate (mara--alist-get 'predicate record))))
-     (copy-sequence (mara-memory-records)))
-    (lambda (a b)
-      (string> (mara--alist-get 'observedAt a "")
-               (mara--alist-get 'observedAt b ""))))))
+  "Return the last appended record matching SUBJECT and PREDICATE, or nil.
+
+The memory store is append ordered.  Use that durable order rather than only
+`observedAt', whose second-level timestamps can tie across rapid updates."
+  (let (latest)
+    (dolist (record (mara-memory-records) latest)
+      (when (and (equal subject (mara--alist-get 'subject record))
+                 (equal predicate (mara--alist-get 'predicate record)))
+        (setq latest record)))))
 
 (defun mara-memory--score-p (value)
   "Return non-nil when VALUE is a valid normalized score."
