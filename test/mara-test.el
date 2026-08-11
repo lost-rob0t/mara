@@ -2,6 +2,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'ert)
 (require 'mara)
 
@@ -11,16 +12,19 @@
   `(let ((mara-data-directory (make-temp-file "mara-test-" t)))
      (unwind-protect
          (progn
-           (when (boundp 'mara-brain--runtime)
+           (when (and (boundp 'mara-brain--runtime)
+                      (fboundp 'mara-brain-stop))
              (mara-brain-stop)
              (setq mara-brain--runtime nil))
            (setq mara-profile-current nil
                  mara-identity-current nil
                  mara-relationship-current nil
                  mara-memory-current nil
-                 mara-session-current nil)
+                 mara-session-current nil
+                 mara-visual-current nil)
            ,@body)
-       (when (boundp 'mara-brain--runtime)
+       (when (and (boundp 'mara-brain--runtime)
+                  (fboundp 'mara-brain-stop))
          (mara-brain-stop)
          (setq mara-brain--runtime nil))
        (delete-directory mara-data-directory t))))
@@ -153,6 +157,69 @@
            '(((role . "user") (content . "hello"))
              ((role . "assistant") (content . "hi"))
              ((role . "user") (content . "continue")))))))
+
+(ert-deftest mara-visual-response-marker-is-hidden ()
+  (pcase-let ((`(,text . ,expression)
+               (mara-visual--parse-response
+                "Yeah, that tracks.\n[[mara-expression:amused]]")))
+    (should (equal "Yeah, that tracks." text))
+    (should (equal "amused" expression))))
+
+(ert-deftest mara-visual-unknown-response-marker-is-still-hidden ()
+  (pcase-let ((`(,text . ,expression)
+               (mara-visual--parse-response
+                "Nope.\n[[mara-expression:laser-eyes]]")))
+    (should (equal "Nope." text))
+    (should-not expression)))
+
+(ert-deftest mara-context-includes-visual-reaction-protocol ()
+  (mara-test-with-state
+    (mara-profile-load)
+    (mara-relationship-load)
+    (should
+     (string-match-p
+      "mara-expression:NAME"
+      (mara-context-system-prompt)))))
+
+(ert-deftest mara-send-ignores-empty-text ()
+  (should-not (mara-send ""))
+  (should-not (mara-send "   \n\t")))
+
+(ert-deftest mara-send-ignores-submit-without-prompt ()
+  (with-temp-buffer
+    (mara-mode)
+    (should-not (mara-send))))
+
+(ert-deftest mara-checkout-root-follows-loaded-library ()
+  (let* ((repo (make-temp-file "mara-checkout-" t))
+         (emacs-directory (expand-file-name "emacs" repo))
+         (library (expand-file-name "mara.el" emacs-directory)))
+    (unwind-protect
+        (progn
+          (make-directory (expand-file-name ".git" repo))
+          (make-directory emacs-directory)
+          (write-region "" nil library nil 'silent)
+          (cl-letf (((symbol-function 'locate-library)
+                     (lambda (_library) library)))
+            (should
+             (equal (file-name-as-directory (file-truename repo))
+                    (mara--checkout-root)))))
+      (delete-directory repo t))))
+
+(ert-deftest update-mara-runs-git-at-checkout-root ()
+  (let (invocation)
+    (cl-letf (((symbol-function 'executable-find)
+               (lambda (_program) "/usr/bin/git"))
+              ((symbol-function 'mara--checkout-root)
+               (lambda () "/tmp/mara/"))
+              ((symbol-function 'process-file)
+               (lambda (program _infile _destination _display &rest args)
+                 (setq invocation (cons program args))
+                 0)))
+      (update-mara)
+      (should
+       (equal '("git" "-C" "/tmp/mara/" "pull" "--ff-only")
+              invocation)))))
 
 (provide 'mara-test)
 ;;; mara-test.el ends here
