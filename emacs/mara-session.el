@@ -69,16 +69,13 @@
       (mara-session--timestamp-local-date (mara--alist-get 'createdAt raw))))
 
 (defun mara-session-new (&optional profile)
-  "Create and persist an ad-hoc session for PROFILE."
-  (setq mara-session-current
-        (make-mara-session :id (mara--uuid)
-                           :profile (or profile mara-profile-current-name)
-                           :created-at (mara--now)
-                           :updated-at (mara--now)
-                           :messages nil
-                           :usage nil))
-  (mara-session-save)
-  mara-session-current)
+  "Load or create today's daily session for PROFILE without erasing it."
+  (let* ((date (mara-session--today))
+         (id (mara-session--daily-id date profile))
+         (raw (mara-state-read (mara-session--path id) nil)))
+    (if raw
+        (setq mara-session-current (mara-session--from-raw id raw))
+      (mara-session-new-daily date profile))))
 
 (defun mara-session-new-daily (&optional date profile)
   "Create and persist the daily session for DATE and PROFILE."
@@ -94,7 +91,7 @@
 
 (defun mara-session-add-message (role content)
   "Append a message with ROLE and CONTENT to the current session."
-  (unless mara-session-current (mara-session-new-daily))
+  (unless mara-session-current (mara-session-new))
   (setf (mara-session-messages mara-session-current)
         (append (mara-session-messages mara-session-current)
                 (list `((role . ,role) (content . ,content)))))
