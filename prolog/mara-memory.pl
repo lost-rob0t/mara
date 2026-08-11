@@ -322,8 +322,7 @@ dispatch("relevant", [Query0 | _]) :-
     value_text(Query0, Query),
     findall(_{id: Id, score: Score, reasons: Reasons},
             relevant_memory(Query, Id, Score, Reasons),
-            Rows0),
-    sort(2, @>=, Rows0, Rows),
+            Rows),
     json_write_dict(current_output, _{memories: Rows}),
     nl.
 dispatch(Command, _) :-
