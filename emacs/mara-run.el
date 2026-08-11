@@ -8,10 +8,15 @@
 (require 'mara-session)
 (require 'mara-tools)
 (require 'mara-visual)
+(require 'subr-x)
+
+(defconst mara-run--visual-marker-prefixes
+  '("[[mara-expression:" "\n[[mara-expression:")
+  "Prefixes reserved for trailing visual-reaction metadata.")
 
 (cl-defstruct mara-run
   id provider messages turns tool-count seen-calls timer handle cancelled
-  on-text on-done on-error)
+  stream-text stream-emitted on-text on-done on-error)
 
 (defvar mara-run-active nil)
 
@@ -28,6 +33,8 @@
          :turns 0 :tool-count 0
          :seen-calls (make-hash-table :test #'equal)
          :cancelled nil
+         :stream-text ""
+         :stream-emitted 0
          :on-text on-text :on-done on-done :on-error on-error))
   (setf (mara-run-timer mara-run-active)
         (run-at-time mara-run-timeout nil #'mara-run--timeout mara-run-active))
@@ -41,27 +48,73 @@
         (mara-run--fail run "Maximum provider turns exceeded")
       (cl-incf (mara-run-turns run))
       (setf (mara-run-handle run)
-            (mara-provider-send
+            (mara-provider-stream
              (mara-run-provider run)
              (list :system (mara-context-system-prompt)
                    :messages (mara-run-messages run))
+             (lambda (chunk) (mara-run--stream-chunk run chunk))
              (lambda (response) (mara-run--response run response))
              (lambda (error-value) (mara-run--fail run error-value)))))))
+
+(defun mara-run--marker-prefix-hold (text)
+  "Return length of TEXT suffix that may start visual metadata."
+  (let ((best 0))
+    (dolist (prefix mara-run--visual-marker-prefixes best)
+      (let ((candidate (min (length text) (length prefix))))
+        (while (and (> candidate 0)
+                    (not (string-suffix-p
+                          (substring prefix 0 candidate) text)))
+          (setq candidate (1- candidate)))
+        (setq best (max best candidate))))))
+
+(defun mara-run--stream-safe-end (run)
+  "Return end offset in RUN's stream safe to display immediately."
+  (let* ((text (mara-run-stream-text run))
+         (emitted (mara-run-stream-emitted run))
+         (marker-start
+          (string-match "\n?\\[\\[mara-expression:" text emitted)))
+    (if marker-start
+        marker-start
+      (- (length text) (mara-run--marker-prefix-hold text)))))
+
+(defun mara-run--stream-chunk (run chunk)
+  "Accumulate and safely emit streaming CHUNK for RUN."
+  (when (and (stringp chunk)
+             (not (mara-run-cancelled run)))
+    (setf (mara-run-stream-text run)
+          (concat (mara-run-stream-text run) chunk))
+    (let ((safe-end (mara-run--stream-safe-end run))
+          (emitted (mara-run-stream-emitted run)))
+      (when (> safe-end emitted)
+        (funcall (mara-run-on-text run)
+                 (substring (mara-run-stream-text run) emitted safe-end))
+        (setf (mara-run-stream-emitted run) safe-end)))))
+
+(defun mara-run--flush-stream (run visible-text)
+  "Emit the unshown suffix of VISIBLE-TEXT for RUN."
+  (let ((emitted (min (mara-run-stream-emitted run)
+                      (length visible-text))))
+    (when (< emitted (length visible-text))
+      (funcall (mara-run-on-text run) (substring visible-text emitted)))
+    (setf (mara-run-stream-emitted run) (length visible-text))))
 
 (defun mara-run--response (run response)
   "Handle normalized provider RESPONSE for RUN."
   (unless (mara-run-cancelled run)
     (let* ((calls (plist-get response :tool-calls))
-           (raw-text (plist-get response :text))
-           (text (if calls
-                     raw-text
-                   (mara-visual-consume-response (or raw-text "")))))
-      (when (and text (not (string-empty-p text)))
-        (funcall (mara-run-on-text run) text))
+           (streamed (plist-get response :streamed))
+           (raw-text (if streamed
+                         (mara-run-stream-text run)
+                       (plist-get response :text))))
       (if calls
           (mara-run--execute-calls run calls)
-        (mara-session-add-message "assistant" text)
-        (mara-run--finish run (plist-put response :text text))))))
+        (let ((text (mara-visual-consume-response (or raw-text ""))))
+          (if streamed
+              (mara-run--flush-stream run text)
+            (when (and text (not (string-empty-p text)))
+              (funcall (mara-run-on-text run) text)))
+          (mara-session-add-message "assistant" text)
+          (mara-run--finish run (plist-put response :text text)))))))
 
 (defun mara-run--execute-calls (run calls)
   "Execute CALLS serially for RUN and continue the loop."

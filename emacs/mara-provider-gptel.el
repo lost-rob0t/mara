@@ -8,9 +8,11 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'gptel-request)
 (require 'mara-provider)
 (require 'mara-tools)
+(require 'subr-x)
 
 (defcustom mara-gptel-backend nil
   "gptel backend used by Mara.
@@ -25,11 +27,23 @@ When nil, inherit the user's current `gptel-model'."
 (cl-defstruct mara-gptel-provider)
 
 (defun mara-gptel--conversation (messages)
-  "Convert Mara MESSAGES to gptel's alternating conversation list."
+  "Convert Mara MESSAGES to gptel's explicit-role conversation format.
+
+Do not infer roles from list position.  Failed or cancelled runs may leave two
+consecutive user messages in persistent history, and flattening that history to
+an alternating string list would cause gptel to interpret the second user
+message as an assistant response."
   (mapcar
    (lambda (message)
-     (let ((content (mara--alist-get 'content message)))
-       (if (stringp content) content (format "%s" content))))
+     (let* ((role (mara--alist-get 'role message))
+            (raw-content (mara--alist-get 'content message))
+            (content (if (stringp raw-content)
+                         raw-content
+                       (format "%s" raw-content))))
+       (pcase role
+         ("user" `(prompt . ,content))
+         ("assistant" `(response . ,content))
+         (_ `(prompt . ,(format "[%s] %s" role content))))))
    messages))
 
 (defun mara-gptel--tool-args (schema)
@@ -76,12 +90,108 @@ When nil, inherit the user's current `gptel-model'."
      mara-tools-registry)
     (nreverse tools)))
 
-(cl-defmethod mara-provider-send ((_provider mara-gptel-provider)
-                                  request on-success on-error)
-  "Send REQUEST through the user's configured gptel backend."
+(defun mara-gptel--cleanup-request-buffer (buffer)
+  "Kill gptel request BUFFER when it is still live."
+  (when (buffer-live-p buffer)
+    (kill-buffer buffer)))
+
+(defun mara-gptel--schedule-cleanup (buffer)
+  "Schedule cleanup of gptel request BUFFER after its callback returns."
+  (when (buffer-live-p buffer)
+    ;; gptel transitions its FSM after invoking the callback.  Deferring cleanup
+    ;; avoids invalidating the request buffer while gptel is still unwinding the
+    ;; current transition.
+    (run-at-time 0 nil #'mara-gptel--cleanup-request-buffer buffer)))
+
+(defun mara-gptel--status (info)
+  "Return a useful status string from gptel callback INFO."
+  (or (plist-get info :status)
+      (when-let ((error-value (plist-get info :error)))
+        (format "%s" error-value))
+      "unknown gptel status"))
+
+(defun mara-gptel--stream-text (state)
+  "Return accumulated streamed text from mutable STATE."
+  (apply #'concat (nreverse (copy-sequence (plist-get state :chunks)))))
+
+(defun mara-gptel--dispatch-callback
+    (response info request-buffer state on-event on-success on-error)
+  "Dispatch gptel RESPONSE and INFO to Mara callbacks.
+
+STATE holds accumulated streaming chunks.  Any Mara-side callback exception is
+converted into ON-ERROR instead of being silently swallowed by gptel's callback
+error demotion."
+  (condition-case err
+      (cond
+       ((stringp response)
+        (if (plist-get info :stream)
+            (progn
+              (setf (plist-get state :chunks)
+                    (cons response (plist-get state :chunks)))
+              (funcall on-event response))
+          ;; Streaming can be requested but unavailable for a backend or when
+          ;; Curl is disabled.  In that case gptel falls back to one final
+          ;; string callback, so complete the request here.
+          (if (string-empty-p (string-trim response))
+              (funcall on-error
+                       (format "gptel returned an empty response (%s)"
+                               (mara-gptel--status info)))
+            (funcall on-success
+                     (list :text response
+                           :tool-calls nil
+                           :streamed nil
+                           :stop-reason "end_turn"
+                           :usage (plist-get info :tokens))))
+          (mara-gptel--schedule-cleanup request-buffer)))
+       ((eq response t)
+        ;; gptel signals successful completion of a streaming HTTP request with
+        ;; a final t callback after all string chunks have been delivered.
+        (funcall on-success
+                 (list :text (mara-gptel--stream-text state)
+                       :tool-calls nil
+                       :streamed t
+                       :stop-reason "end_turn"
+                       :usage (plist-get info :tokens)))
+        (mara-gptel--schedule-cleanup request-buffer))
+       ((eq response 'abort)
+        (funcall on-error "gptel request aborted")
+        (mara-gptel--schedule-cleanup request-buffer))
+       ((eq (car-safe response) 'tool-call)
+        (funcall on-success
+                 (list :text ""
+                       :tool-calls
+                       (mapcar #'mara-gptel--normalize-tool-call
+                               (cdr response))
+                       :streamed (and (plist-get info :stream) t)
+                       :stop-reason "tool_use")))
+       ;; gptel reports tool results and reasoning before continuing its FSM.
+       ((memq (car-safe response) '(tool-result reasoning)) nil)
+       ((null response)
+        (funcall on-error
+                 (format "gptel request failed: %s"
+                         (mara-gptel--status info)))
+        (mara-gptel--schedule-cleanup request-buffer))
+       (t
+        (funcall on-error
+                 (format "Unexpected gptel callback response: %S (%s)"
+                         response (mara-gptel--status info)))
+        (mara-gptel--schedule-cleanup request-buffer)))
+    (error
+     (funcall on-error
+              (format "Mara gptel callback failed: %s"
+                      (error-message-string err)))
+     (mara-gptel--schedule-cleanup request-buffer))))
+
+(defun mara-gptel--request
+    (request on-event on-success on-error stream)
+  "Send REQUEST through gptel.
+
+When STREAM is non-nil, invoke ON-EVENT for each text chunk and ON-SUCCESS once
+gptel signals completion."
   (unless (bound-and-true-p gptel-backend)
     (user-error "Configure a gptel backend before starting Mara"))
-  (let ((request-buffer (generate-new-buffer " *mara-gptel-request*")))
+  (let ((request-buffer (generate-new-buffer " *mara-gptel-request*"))
+        (state (list :chunks nil)))
     (with-current-buffer request-buffer
       (setq-local gptel-backend (or mara-gptel-backend gptel-backend))
       (setq-local gptel-model (or mara-gptel-model gptel-model))
@@ -93,42 +203,23 @@ When nil, inherit the user's current `gptel-model'."
           (mara-gptel--conversation (plist-get request :messages))
         :buffer request-buffer
         :system (plist-get request :system)
-        :stream nil
+        :stream stream
         :callback
         (lambda (response info)
-          (cond
-           ((stringp response)
-            ;; Some backends return a short preamble alongside tool calls.
-            ;; gptel will surface those calls on its next FSM transition, so a
-            ;; text fragment in that state is not the final assistant answer.
-            (unless (plist-get info :tool-use)
-              (funcall on-success
-                       (list :text response
-                             :tool-calls nil
-                             :stop-reason "end_turn"
-                             :usage (plist-get info :tokens)))
-              (when (buffer-live-p request-buffer)
-                (kill-buffer request-buffer))))
-           ((eq response 'abort)
-            (funcall on-error "gptel request aborted")
-            (when (buffer-live-p request-buffer)
-              (kill-buffer request-buffer)))
-           ((eq (car-safe response) 'tool-call)
-            (funcall on-success
-                     (list :text ""
-                           :tool-calls
-                           (mapcar #'mara-gptel--normalize-tool-call
-                                   (cdr response))
-                           :stop-reason "tool_use")))
-           ;; gptel reports tool results before it continues its own FSM.
-           ((eq (car-safe response) 'tool-result) nil)
-           ((eq (car-safe response) 'reasoning) nil)
-           ((null response)
-            (funcall on-error
-                     (or (plist-get info :status) "gptel request failed"))
-            (when (buffer-live-p request-buffer)
-              (kill-buffer request-buffer)))))))
+          (mara-gptel--dispatch-callback
+           response info request-buffer state
+           on-event on-success on-error))))
     request-buffer))
+
+(cl-defmethod mara-provider-send ((_provider mara-gptel-provider)
+                                  request on-success on-error)
+  "Send REQUEST through gptel without requesting streaming."
+  (mara-gptel--request request #'ignore on-success on-error nil))
+
+(cl-defmethod mara-provider-stream ((_provider mara-gptel-provider)
+                                    request on-event on-success on-error)
+  "Stream REQUEST through gptel when the active backend supports it."
+  (mara-gptel--request request on-event on-success on-error t))
 
 (defun mara-gptel--normalize-tool-call (call)
   "Normalize one gptel pending tool CALL for Mara's run loop."
@@ -141,7 +232,8 @@ When nil, inherit the user's current `gptel-model'."
   "Cancel gptel request associated with buffer HANDLE."
   (when (buffer-live-p handle)
     (gptel-abort handle)
-    (when (buffer-live-p handle) (kill-buffer handle))))
+    (when (buffer-live-p handle)
+      (kill-buffer handle))))
 
 (provide 'mara-provider-gptel)
 ;;; mara-provider-gptel.el ends here

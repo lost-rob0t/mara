@@ -83,13 +83,83 @@
                      (mara--alist-get 'content
                                       (car (mara-session-messages mara-session-current))))))))
 
-(ert-deftest mara-gptel-conversation-uses-persistent-history ()
+(ert-deftest mara-gptel-conversation-preserves-explicit-roles ()
   (should
-   (equal '("hello" "hi" "continue")
+   (equal '((prompt . "hello")
+            (response . "hi")
+            (prompt . "continue"))
           (mara-gptel--conversation
            '(((role . "user") (content . "hello"))
              ((role . "assistant") (content . "hi"))
              ((role . "user") (content . "continue")))))))
+
+(ert-deftest mara-gptel-conversation-preserves-consecutive-user-turns ()
+  (should
+   (equal '((prompt . "first")
+            (prompt . "retry"))
+          (mara-gptel--conversation
+           '(((role . "user") (content . "first"))
+             ((role . "user") (content . "retry")))))))
+
+(ert-deftest mara-gptel-callback-streams-and-assembles-final-text ()
+  (let ((state (list :chunks nil))
+        chunks final reported)
+    (mara-gptel--dispatch-callback
+     "Hel" '(:stream t :status "HTTP/2 200") nil state
+     (lambda (chunk) (push chunk chunks))
+     (lambda (response) (setq final response))
+     (lambda (error-value) (setq reported error-value)))
+    (mara-gptel--dispatch-callback
+     "lo" '(:stream t :status "HTTP/2 200") nil state
+     (lambda (chunk) (push chunk chunks))
+     (lambda (response) (setq final response))
+     (lambda (error-value) (setq reported error-value)))
+    (should-not final)
+    (should-not reported)
+    (should (equal '("Hel" "lo") (nreverse chunks)))
+    (mara-gptel--dispatch-callback
+     t '(:stream t :status "HTTP/2 200") nil state
+     #'ignore
+     (lambda (response) (setq final response))
+     (lambda (error-value) (setq reported error-value)))
+    (should-not reported)
+    (should (eq t (plist-get final :streamed)))
+    (should (equal "Hello" (plist-get final :text)))))
+
+(ert-deftest mara-gptel-callback-surfaces-handler-errors ()
+  (let ((state (list :chunks nil)) reported)
+    (mara-gptel--dispatch-callback
+     "hello" '(:status "HTTP 200") nil state
+     #'ignore
+     (lambda (_response) (error "boom"))
+     (lambda (error-value) (setq reported error-value)))
+    (should (string-match-p "Mara gptel callback failed: boom" reported))))
+
+(ert-deftest mara-gptel-callback-rejects-empty-final-response ()
+  (let ((state (list :chunks nil)) reported succeeded)
+    (mara-gptel--dispatch-callback
+     "   \n" '(:status "HTTP 200") nil state
+     #'ignore
+     (lambda (_response) (setq succeeded t))
+     (lambda (error-value) (setq reported error-value)))
+    (should-not succeeded)
+    (should (string-match-p "gptel returned an empty response" reported))))
+
+(ert-deftest mara-run-stream-holds-only-visual-metadata-suffix ()
+  (let (parts)
+    (let ((run (make-mara-run
+                :cancelled nil
+                :stream-text ""
+                :stream-emitted 0
+                :on-text (lambda (chunk) (push chunk parts)))))
+      (mara-run--stream-chunk run "Hello")
+      (should (equal "Hello" (apply #'concat (nreverse (copy-sequence parts)))))
+      (mara-run--stream-chunk run "\n[")
+      (mara-run--stream-chunk run "[mara-expression:amused]]")
+      (should (= 5 (mara-run--stream-safe-end run)))
+      (should (equal "Hello" (apply #'concat (nreverse (copy-sequence parts)))))
+      (mara-run--flush-stream run "Hello")
+      (should (equal "Hello" (apply #'concat (nreverse parts)))))))
 
 (ert-deftest mara-visual-response-marker-is-hidden ()
   (pcase-let ((`(,text . ,expression)
