@@ -47,6 +47,7 @@ fallback and memory reasoning/retrieval is skipped rather than blocking Mara.
 ## Architecture and research
 
 - [ADR 0001: Prolog-backed memory core](docs/adr/0001-prolog-memory-core.md)
+- [ADR 0002: Prolog-derived relationship state](docs/adr/0002-prolog-relationship-state.md)
 - [Memory systems research for Mara](docs/research/memory-systems.md)
 
 The research note compares MemGPT/Letta, Generative Agents, CoALA,
