@@ -96,6 +96,33 @@
      (equal '("native_echo" (("value" . "hello")))
             executed))))
 
+(ert-deftest mara-native-tool-decodes-unibyte-utf8-result ()
+  (let ((mara-tools-registry (make-hash-table :test #'equal))
+        (raw-result
+         (encode-coding-string
+          "{\"summary\":\"hello — babe\"}"
+          'utf-8))
+        callback-value)
+    (should-not (multibyte-string-p raw-result))
+    (mara-tools-register
+     (make-mara-tool
+      :name "native_unicode"
+      :description "Return Unicode JSON text."
+      :capability "test.unicode"
+      :input-schema '((type . "object"))
+      :function #'ignore))
+    (cl-letf (((symbol-function 'mara-tools-authorized-p)
+               (lambda (_capability) t))
+              ((symbol-function 'mara-tools-execute)
+               (lambda (_name _input callback)
+                 (funcall callback raw-result nil))))
+      (let* ((tool (car (mara-gptel-tools)))
+             (function (gptel-tool-function tool)))
+        (funcall function
+                 (lambda (value) (setq callback-value value)))))
+    (should (multibyte-string-p callback-value))
+    (should (equal "{\"summary\":\"hello — babe\"}" callback-value))))
+
 (ert-deftest mara-native-response-keeps-reasoning-out-of-session-text ()
   (with-temp-buffer
     (mara-mode)
