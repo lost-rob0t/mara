@@ -117,7 +117,7 @@
                    (tags . ,(or tags '())))))
     (mara-memory-validate record)
     (setf (alist-get 'memories mara-memory-current)
-          (append (mara-memory-records) (list record)))
+          (vconcat (mara-memory-records) (list record)))
     (mara-memory-save)
     id))
 
