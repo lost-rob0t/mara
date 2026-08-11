@@ -55,6 +55,19 @@ When nil, inherit the user's current `gptel-model'."
        (car property)))
    (mara--alist-get 'properties schema)))
 
+(defun mara-gptel--normalize-tool-result (result)
+  "Return RESULT as Unicode text safe for gptel insertion and serialization.
+
+Native JSON helpers use `json-serialize', which returns a unibyte UTF-8
+string.  Passing that byte string directly into a multibyte Org chat can leave
+raw eight-bit characters in the conversation.  A later gptel request then
+fails while JSON-serializing the conversation.  Decode unibyte tool text at
+the Mara/gptel boundary so tool continuations always see valid Unicode."
+  (cond
+   ((not (stringp result)) (format "%s" result))
+   ((multibyte-string-p result) result)
+   (t (decode-coding-string result 'utf-8 t))))
+
 (defun mara-gptel--tool-function (tool)
   "Return an async gptel function that executes Mara TOOL via the broker."
   (let ((name (mara-tool-name tool))
@@ -66,9 +79,10 @@ When nil, inherit the user's current `gptel-model'."
        (cl-mapcar #'cons argument-names values)
        (lambda (result errorp)
          (funcall callback
-                  (if errorp
-                      (format "Mara capability/tool error: %s" result)
-                    result)))))))
+                  (mara-gptel--normalize-tool-result
+                   (if errorp
+                       (format "Mara capability/tool error: %s" result)
+                     result))))))))
 
 (defun mara-gptel-tools ()
   "Build native async gptel tools from Mara's authorized registry.
