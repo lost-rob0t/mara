@@ -83,13 +83,40 @@
                      (mara--alist-get 'content
                                       (car (mara-session-messages mara-session-current))))))))
 
-(ert-deftest mara-gptel-conversation-uses-persistent-history ()
+(ert-deftest mara-gptel-conversation-preserves-explicit-roles ()
   (should
-   (equal '("hello" "hi" "continue")
+   (equal '((prompt . "hello")
+            (response . "hi")
+            (prompt . "continue"))
           (mara-gptel--conversation
            '(((role . "user") (content . "hello"))
              ((role . "assistant") (content . "hi"))
              ((role . "user") (content . "continue")))))))
+
+(ert-deftest mara-gptel-conversation-preserves-consecutive-user-turns ()
+  (should
+   (equal '((prompt . "first")
+            (prompt . "retry"))
+          (mara-gptel--conversation
+           '(((role . "user") (content . "first"))
+             ((role . "user") (content . "retry")))))))
+
+(ert-deftest mara-gptel-callback-surfaces-handler-errors ()
+  (let (reported)
+    (mara-gptel--dispatch-callback
+     "hello" '(:status "HTTP 200") nil
+     (lambda (_response) (error "boom"))
+     (lambda (error-value) (setq reported error-value)))
+    (should (string-match-p "Mara gptel callback failed: boom" reported))))
+
+(ert-deftest mara-gptel-callback-rejects-empty-final-response ()
+  (let (reported succeeded)
+    (mara-gptel--dispatch-callback
+     "   \n" '(:status "HTTP 200") nil
+     (lambda (_response) (setq succeeded t))
+     (lambda (error-value) (setq reported error-value)))
+    (should-not succeeded)
+    (should (string-match-p "gptel returned an empty response" reported))))
 
 (ert-deftest mara-visual-response-marker-is-hidden ()
   (pcase-let ((`(,text . ,expression)
