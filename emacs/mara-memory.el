@@ -14,6 +14,9 @@
 (defvar mara-memory-current nil
   "Loaded durable memory store.")
 
+(defvar mara-memory-revision 0
+  "Monotonic in-process revision of loaded or persisted memory state.")
+
 (defun mara-memory-path ()
   "Return the durable memory store path."
   (mara-state-path "memory"))
@@ -25,13 +28,17 @@
     (setq mara-memory-current
           (if (file-exists-p path)
               (mara-state-read path fallback)
-            (mara-state-write path fallback)))))
+            (mara-state-write path fallback)))
+    (cl-incf mara-memory-revision)
+    mara-memory-current))
 
 (defun mara-memory-save ()
   "Persist Mara's durable memory store."
   (unless mara-memory-current
     (mara-memory-load))
-  (mara-state-write (mara-memory-path) mara-memory-current))
+  (prog1
+      (mara-state-write (mara-memory-path) mara-memory-current)
+    (cl-incf mara-memory-revision)))
 
 (defun mara-memory-records ()
   "Return loaded memory records as a list."
