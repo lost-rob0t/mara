@@ -20,11 +20,12 @@
 
 (defun mara-memory-load ()
   "Load Mara's durable memory store."
-  (let ((path (mara-memory-path)))
+  (let* ((path (mara-memory-path))
+         (fallback (copy-tree mara-memory--default t)))
     (setq mara-memory-current
           (if (file-exists-p path)
-              (mara-state-read path mara-memory--default)
-            (mara-state-write path mara-memory--default)))))
+              (mara-state-read path fallback)
+            (mara-state-write path fallback)))))
 
 (defun mara-memory-save ()
   "Persist Mara's durable memory store."
