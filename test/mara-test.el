@@ -12,12 +12,22 @@
   `(let ((mara-data-directory (make-temp-file "mara-test-" t)))
      (unwind-protect
          (progn
+           (when (and (boundp 'mara-brain--runtime)
+                      (fboundp 'mara-brain-stop))
+             (mara-brain-stop)
+             (setq mara-brain--runtime nil))
            (setq mara-profile-current nil
                  mara-identity-current nil
                  mara-relationship-current nil
+                 mara-memory-current nil
+                 mara-memory-revision 0
                  mara-session-current nil
                  mara-visual-current nil)
            ,@body)
+       (when (and (boundp 'mara-brain--runtime)
+                  (fboundp 'mara-brain-stop))
+         (mara-brain-stop)
+         (setq mara-brain--runtime nil))
        (delete-directory mara-data-directory t))))
 
 (ert-deftest mara-state-round-trip ()
@@ -27,6 +37,64 @@
       (mara-state-write path value)
       (should (equal "Mara" (mara--alist-get 'name (mara-state-read path nil))))
       (should (eq t (mara--alist-get 'enabled (mara-state-read path nil)))))))
+
+(ert-deftest mara-memory-round-trip ()
+  (mara-test-with-state
+    (mara-memory-load)
+    (let ((id (mara-memory-add
+               :kind "profile"
+               :subject "user"
+               :predicate "favorite_editor"
+               :object "emacs"
+               :summary "User prefers Emacs"
+               :confidence 1.0
+               :importance 0.8)))
+      (setq mara-memory-current nil)
+      (mara-memory-load)
+      (let ((record (mara-memory-find-latest "user" "favorite_editor")))
+        (should (equal id (mara--alist-get 'id record)))
+        (should (equal "emacs" (mara--alist-get 'object record)))))))
+
+(ert-deftest mara-prolog-runtime-persists-across-calls ()
+  (let ((runtime (mara-prolog-make-runtime)))
+    (unwind-protect
+        (progn
+          (skip-unless (mara-prolog-available-p runtime))
+          (let ((first (mara-prolog-call runtime "ping")))
+            (should (equal "pong" (mara--alist-get 'status first))))
+          (let ((process (mara-prolog-runtime-process runtime)))
+            (should (process-live-p process))
+            (let ((second (mara-prolog-call runtime "ping")))
+              (should (equal "pong" (mara--alist-get 'status second))))
+            (should (eq process (mara-prolog-runtime-process runtime)))))
+      (mara-prolog-stop runtime))))
+
+(ert-deftest mara-brain-reloads-memory-without-process-restart ()
+  (mara-test-with-state
+    (skip-unless (mara-brain-available-p))
+    (mara-memory-load)
+    (mara-memory-add-relationship-signal
+     "user" "relationship_interest" "affirmative")
+    (let* ((first (mara-brain-relationship-snapshot))
+           (process (mara-prolog-runtime-process mara-brain--runtime)))
+      (should (equal "affirmative" (mara--alist-get 'userInterest first)))
+      (mara-memory-add-relationship-signal
+       "user" "relationship_interest" "declined")
+      (let ((second (mara-brain-relationship-snapshot)))
+        (should (equal "declined" (mara--alist-get 'userInterest second))))
+      (should (eq process
+                  (mara-prolog-runtime-process mara-brain--runtime))))))
+
+(ert-deftest mara-relationship-interest-memory-supersedes-old-value ()
+  (mara-test-with-state
+    (mara-profile-load)
+    (mara-relationship-load)
+    (mara-relationship-set-interest 'userInterest "affirmative")
+    (mara-relationship-set-interest 'userInterest "declined")
+    (let* ((latest (mara-memory-find-latest "user" "relationship_interest"))
+           (supersedes (mara--alist-get 'supersedes latest)))
+      (should (equal "declined" (mara--alist-get 'object latest)))
+      (should (= 1 (length supersedes))))))
 
 (ert-deftest mara-override-preserves-organic-state ()
   (mara-test-with-state

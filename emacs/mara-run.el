@@ -5,6 +5,7 @@
 (require 'cl-lib)
 (require 'mara-context)
 (require 'mara-provider)
+(require 'mara-relationship)
 (require 'mara-session)
 (require 'mara-tools)
 (require 'mara-visual)
@@ -15,7 +16,7 @@
   "Prefixes reserved for trailing visual-reaction metadata.")
 
 (cl-defstruct mara-run
-  id provider messages turns tool-count seen-calls timer handle cancelled
+  id provider messages memory-query turns tool-count seen-calls timer handle cancelled
   stream-text stream-emitted on-text on-done on-error)
 
 (defvar mara-run-active nil)
@@ -25,11 +26,13 @@
   (when mara-run-active
     (user-error "Mara already has an active run; cancel it first"))
   (mara-session-add-message "user" user-text)
+  (mara-relationship-note-session-interaction)
   (setq mara-run-active
         (make-mara-run
          :id (mara--uuid)
          :provider provider
          :messages (copy-tree (mara-session-messages mara-session-current))
+         :memory-query user-text
          :turns 0 :tool-count 0
          :seen-calls (make-hash-table :test #'equal)
          :cancelled nil
@@ -51,7 +54,8 @@
           (setf (mara-run-handle run)
                 (mara-provider-stream
                  (mara-run-provider run)
-                 (list :system (mara-context-system-prompt)
+                 (list :system (mara-context-system-prompt
+                                (mara-run-memory-query run))
                        :messages (mara-run-messages run))
                  (lambda (chunk) (mara-run--stream-chunk run chunk))
                  (lambda (response) (mara-run--response run response))
