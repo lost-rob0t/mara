@@ -12,6 +12,7 @@
 (defvar-local mara-ui-prompt-start nil)
 (defvar-local mara-ui-input-start nil)
 (defvar-local mara-ui-stream-active nil)
+(defvar-local mara-ui-request-status nil)
 
 (define-derived-mode mara-mode text-mode "Mara"
   "Major mode for a Mara conversation."
@@ -21,6 +22,15 @@
   (define-key mara-mode-map (kbd "RET") #'mara-send)
   (define-key mara-mode-map (kbd "C-c C-c") #'mara-cancel)
   (define-key mara-mode-map (kbd "C-c C-v") #'mara-visual-render-scene))
+
+(defun mara-ui--set-status (status)
+  "Set Mara conversation STATUS in the header line.
+When STATUS is nil, clear the request-status header."
+  (with-current-buffer (get-buffer-create mara-ui-buffer-name)
+    (setq mara-ui-request-status status
+          header-line-format
+          (and status (format " Mara — %s" status)))
+    (force-mode-line-update t)))
 
 (defun mara-ui--insert-read-only (text)
   "Insert TEXT as protected transcript content."
@@ -67,6 +77,7 @@
 (defun mara-ui--stream-chunk (chunk)
   "Append one live Mara response CHUNK without repeating the speaker label."
   (when (and (stringp chunk) (not (string-empty-p chunk)))
+    (mara-ui--set-status "streaming response")
     (with-current-buffer (get-buffer-create mara-ui-buffer-name)
       (let ((inhibit-read-only t))
         (mara-ui--remove-prompt)
@@ -84,14 +95,17 @@
       (let ((inhibit-read-only t))
         (goto-char (point-max))
         (mara-ui--insert-read-only "\n\n"))
-      (setq mara-ui-stream-active nil))))
+      (setq mara-ui-stream-active nil)))
+  (mara-ui--set-status nil))
 
 (defun mara-ui-open ()
   "Open and render Mara's conversation buffer."
   (let ((buffer (get-buffer-create mara-ui-buffer-name)))
     (with-current-buffer buffer
       (mara-mode)
-      (setq mara-ui-stream-active nil)
+      (setq mara-ui-stream-active nil
+            mara-ui-request-status nil
+            header-line-format nil)
       (let ((inhibit-read-only t))
         (erase-buffer)
         (mara-ui--insert-read-only
@@ -131,6 +145,7 @@ Empty input and submits while no prompt is available are ignored."
       (when (eq major-mode 'mara-mode)
         (mara-ui--remove-prompt))
       (mara-ui--append "You" message-text)
+      (mara-ui--set-status "waiting for model / reasoning")
       (mara-run-start
        mara-ui-provider message-text
        #'mara-ui--stream-chunk
