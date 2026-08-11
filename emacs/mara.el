@@ -20,6 +20,17 @@
   (file-name-directory (or load-file-name buffer-file-name))
   "Directory containing the loaded Mara Emacs runtime.")
 
+(defun mara--checkout-root ()
+  "Return the Git checkout root containing the loaded Mara library."
+  (let* ((library (or (locate-library "mara")
+                      (expand-file-name "mara.el" mara-source-directory)))
+         (source-directory
+          (file-name-directory (file-truename library)))
+         (root (locate-dominating-file source-directory ".git")))
+    (unless root
+      (user-error "Could not locate Mara Git checkout from %s" library))
+    (file-name-as-directory (file-truename root))))
+
 (defun mara--initialize (&optional profile)
   "Initialize persistent state for PROFILE."
   (mara-profile-load profile)
@@ -51,21 +62,18 @@
 (defun update-mara ()
   "Fast-forward the local Mara checkout with Git.
 
-This updates the checkout containing the currently loaded Mara runtime.  It
-never creates a merge commit.  Restart Emacs after a successful update so the
-new runtime is loaded cleanly."
+This resolves the checkout from the loaded Mara library rather than the
+current buffer's directory.  It never creates a merge commit.  Restart Emacs
+after a successful update so the new runtime is loaded cleanly."
   (interactive)
   (unless (executable-find "git")
     (user-error "git is not available in PATH"))
-  (let* ((root (file-name-as-directory
-                (expand-file-name ".." mara-source-directory)))
-         (default-directory root)
+  (let* ((root (mara--checkout-root))
          (buffer (get-buffer-create "*Mara Update*")))
-    (unless (file-directory-p (expand-file-name ".git" root))
-      (user-error "Mara checkout is not a Git repository: %s" root))
     (with-current-buffer buffer
       (erase-buffer))
-    (let ((status (call-process "git" nil buffer t "pull" "--ff-only")))
+    (let ((status (process-file "git" nil buffer t
+                                "-C" root "pull" "--ff-only")))
       (if (zerop status)
           (progn
             (message "Mara updated in %s; restart Emacs to load changes" root)
