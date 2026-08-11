@@ -3,6 +3,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'seq)
 (require 'mara-profile)
 (require 'mara-relationship)
 (require 'mara-memory)
