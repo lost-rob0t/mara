@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - main
       - feature/emacs-runtime-v0.1
 
 permissions:
@@ -14,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Emacs
+      - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes emacs-nox
+          sudo apt-get install --yes emacs-nox swi-prolog-nox
       - name: Install gptel
         run: |
           emacs -Q --batch --eval '(progn
@@ -35,4 +36,5 @@ jobs:
       - name: Run ERT
         run: >-
           emacs -Q --batch -l package --eval '(package-initialize)'
-          -L emacs -L test -l test/mara-test.el -f ert-run-tests-batch-and-exit
+          -L emacs -L test -l test/mara-test.el -l test/mara-native-test.el
+          -f ert-run-tests-batch-and-exit

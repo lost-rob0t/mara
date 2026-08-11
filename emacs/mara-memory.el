@@ -32,10 +32,27 @@
     (cl-incf mara-memory-revision)
     mara-memory-current))
 
+(defun mara-memory--normalize-record-arrays (record)
+  "Return a JSON-serializable copy of memory RECORD.
+
+`json-serialize' treats Lisp lists as objects.  Memory schema fields that are
+JSON arrays therefore need to be vectors at the persistence boundary, even
+though `json-parse-buffer' loads arrays as lists for the rest of Mara."
+  (let ((normalized (copy-tree record t)))
+    (dolist (field '(supports supersedes tags) normalized)
+      (setf (alist-get field normalized)
+            (vconcat (or (mara--alist-get field normalized) '()))))))
+
 (defun mara-memory-save ()
   "Persist Mara's durable memory store."
   (unless mara-memory-current
     (mara-memory-load))
+  (let ((normalized (copy-tree mara-memory-current t)))
+    (setf (alist-get 'memories normalized)
+          (vconcat
+           (mapcar #'mara-memory--normalize-record-arrays
+                   (mara-memory-records))))
+    (setq mara-memory-current normalized))
   (prog1
       (mara-state-write (mara-memory-path) mara-memory-current)
     (cl-incf mara-memory-revision)))
@@ -51,25 +68,24 @@
      (t nil))))
 
 (defun mara-memory-find-latest (subject predicate)
-  "Return the newest record matching SUBJECT and PREDICATE, or nil."
-  (car
-   (sort
-    (cl-remove-if-not
-     (lambda (record)
-       (and (equal subject (mara--alist-get 'subject record))
-            (equal predicate (mara--alist-get 'predicate record))))
-     (copy-sequence (mara-memory-records)))
-    (lambda (a b)
-      (string> (mara--alist-get 'observedAt a "")
-               (mara--alist-get 'observedAt b "")))))))
+  "Return the last appended record matching SUBJECT and PREDICATE, or nil.
+
+The memory store is append ordered.  Use that durable order rather than only
+`observedAt', whose second-level timestamps can tie across rapid updates."
+  (let (latest)
+    (dolist (record (mara-memory-records) latest)
+      (when (and (equal subject (mara--alist-get 'subject record))
+                 (equal predicate (mara--alist-get 'predicate record)))
+        (setq latest record)))))
 
 (defun mara-memory--score-p (value)
   "Return non-nil when VALUE is a valid normalized score."
   (and (numberp value) (<= 0.0 value) (<= value 1.0)))
 
 (defun mara-memory--string-list-p (value)
-  "Return non-nil when VALUE is a list of strings."
-  (and (listp value) (cl-every #'stringp value)))
+  "Return non-nil when VALUE is a sequence containing only strings."
+  (or (and (listp value) (cl-every #'stringp value))
+      (and (vectorp value) (cl-every #'stringp value))))
 
 (defun mara-memory-validate (record)
   "Validate RECORD and return it, or signal `user-error'."
@@ -117,7 +133,7 @@
                    (tags . ,(or tags '())))))
     (mara-memory-validate record)
     (setf (alist-get 'memories mara-memory-current)
-          (append (mara-memory-records) (list record)))
+          (vconcat (mara-memory-records) (list record)))
     (mara-memory-save)
     id))
 
