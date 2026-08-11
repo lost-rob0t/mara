@@ -9,9 +9,16 @@
 (require 'mara-tools)
 (require 'mara-visual)
 
+(defcustom mara-run-stream-tail-size 128
+  "Characters withheld from live output until a Mara response completes.
+
+This keeps trailing runtime metadata such as `[[mara-expression:...]]' out of
+the visible stream while still displaying nearly all response text live."
+  :type 'integer)
+
 (cl-defstruct mara-run
   id provider messages turns tool-count seen-calls timer handle cancelled
-  on-text on-done on-error)
+  stream-text stream-emitted on-text on-done on-error)
 
 (defvar mara-run-active nil)
 
@@ -28,6 +35,8 @@
          :turns 0 :tool-count 0
          :seen-calls (make-hash-table :test #'equal)
          :cancelled nil
+         :stream-text ""
+         :stream-emitted 0
          :on-text on-text :on-done on-done :on-error on-error))
   (setf (mara-run-timer mara-run-active)
         (run-at-time mara-run-timeout nil #'mara-run--timeout mara-run-active))
@@ -41,27 +50,52 @@
         (mara-run--fail run "Maximum provider turns exceeded")
       (cl-incf (mara-run-turns run))
       (setf (mara-run-handle run)
-            (mara-provider-send
+            (mara-provider-stream
              (mara-run-provider run)
              (list :system (mara-context-system-prompt)
                    :messages (mara-run-messages run))
+             (lambda (chunk) (mara-run--stream-chunk run chunk))
              (lambda (response) (mara-run--response run response))
              (lambda (error-value) (mara-run--fail run error-value)))))))
+
+(defun mara-run--stream-chunk (run chunk)
+  "Accumulate and safely emit streaming CHUNK for RUN."
+  (when (and (stringp chunk)
+             (not (mara-run-cancelled run)))
+    (setf (mara-run-stream-text run)
+          (concat (mara-run-stream-text run) chunk))
+    (let* ((text (mara-run-stream-text run))
+           (safe-end (max 0 (- (length text) mara-run-stream-tail-size)))
+           (emitted (mara-run-stream-emitted run)))
+      (when (> safe-end emitted)
+        (funcall (mara-run-on-text run) (substring text emitted safe-end))
+        (setf (mara-run-stream-emitted run) safe-end)))))
+
+(defun mara-run--flush-stream (run visible-text)
+  "Emit the unshown suffix of VISIBLE-TEXT for RUN."
+  (let ((emitted (min (mara-run-stream-emitted run)
+                      (length visible-text))))
+    (when (< emitted (length visible-text))
+      (funcall (mara-run-on-text run) (substring visible-text emitted)))
+    (setf (mara-run-stream-emitted run) (length visible-text))))
 
 (defun mara-run--response (run response)
   "Handle normalized provider RESPONSE for RUN."
   (unless (mara-run-cancelled run)
     (let* ((calls (plist-get response :tool-calls))
-           (raw-text (plist-get response :text))
-           (text (if calls
-                     raw-text
-                   (mara-visual-consume-response (or raw-text "")))))
-      (when (and text (not (string-empty-p text)))
-        (funcall (mara-run-on-text run) text))
+           (streamed (plist-get response :streamed))
+           (raw-text (if streamed
+                         (mara-run-stream-text run)
+                       (plist-get response :text))))
       (if calls
           (mara-run--execute-calls run calls)
-        (mara-session-add-message "assistant" text)
-        (mara-run--finish run (plist-put response :text text))))))
+        (let ((text (mara-visual-consume-response (or raw-text ""))))
+          (if streamed
+              (mara-run--flush-stream run text)
+            (when (and text (not (string-empty-p text)))
+              (funcall (mara-run-on-text run) text)))
+          (mara-session-add-message "assistant" text)
+          (mara-run--finish run (plist-put response :text text)))))))
 
 (defun mara-run--execute-calls (run calls)
   "Execute CALLS serially for RUN and continue the loop."
