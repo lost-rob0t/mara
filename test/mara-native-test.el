@@ -13,6 +13,14 @@
     (should (equal "* You\n" (mara-ui--prompt-prefix)))
     (should (equal "* Mara\n" (mara-ui--response-prefix)))))
 
+(ert-deftest mara-native-request-info-accepts-current-gptel-fsm-shape ()
+  (let ((expected '(:buffer "*Mara*" :dry-run t)))
+    (cl-letf (((symbol-function 'gptel-fsm-info)
+               (lambda (request)
+                 (should (eq request 'fake-fsm))
+                 expected)))
+      (should (eq expected (mara-ui--request-info 'fake-fsm))))))
+
 (ert-deftest mara-native-prepare-request-injects-query-once ()
   (mara-test-with-state
     (mara-profile-load)
@@ -31,11 +39,20 @@
                      (format "context:%s" query)))
                   ((symbol-function 'mara-relationship-note-session-interaction)
                    (lambda () (cl-incf interactions))))
+          ;; Query inspection still receives Mara's dynamic prompt, but must not
+          ;; mutate the durable relationship/session state.
           (with-temp-buffer
             (mara-ui--prepare-request
-             (list :buffer source :position position))
+             (list :buffer source :position position :dry-run t))
             (should (equal "context:remember emacs"
                            gptel-system-prompt)))
+          (should-not interactions)
+          (should-not (mara-session-messages mara-session-current))
+          ;; Real dispatch mirrors the user once.  Re-running the transform for
+          ;; a tool continuation must not duplicate that turn.
+          (with-temp-buffer
+            (mara-ui--prepare-request
+             (list :buffer source :position position)))
           (with-temp-buffer
             (mara-ui--prepare-request
              (list :buffer source :position position))))
@@ -46,7 +63,7 @@
                 (mara--alist-get
                  'content
                  (car (mara-session-messages mara-session-current)))))
-        (should (equal '("remember emacs" "remember emacs")
+        (should (equal '("remember emacs" "remember emacs" "remember emacs")
                        queries))))))
 
 (ert-deftest mara-native-tool-runs-through-capability-broker ()
