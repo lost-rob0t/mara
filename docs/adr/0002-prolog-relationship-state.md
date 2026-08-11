@@ -112,7 +112,7 @@ The effective phase can therefore differ from the Prolog-derived organic phase w
 ## Runtime flow
 
 ```text
-conversation/session event
+Org-native gptel conversation/session event
         |
         v
 memory.json append/supersede
@@ -128,7 +128,7 @@ persistent SWI-Prolog worker
 relationship.json cached snapshot
         |
         v
-mara-context.el
+mara-context.el -> gptel prompt transform
 ```
 
 ## Initial implementation
@@ -140,12 +140,13 @@ Implemented in Mara:
 - `emacs/mara-brain.el`
 - `emacs/mara-relationship.el`
 - `emacs/mara-context.el`
-- `emacs/mara-run.el`
+- `emacs/mara-gptel.el`
+- `emacs/mara-ui.el`
 - `prolog/mara-prolog-server.pl`
 - `prolog/mara-memory.pl`
 - `prolog/test_mara_memory.pl`
 
-The Emacs runtime owns one persistent SWI-Prolog child process and communicates over newline-delimited JSON. No network daemon, Python service, graph database, or vector database is required.
+The Emacs runtime owns one persistent SWI-Prolog child process and communicates over newline-delimited JSON. The conversation path itself is native gptel in a persistent Org buffer; Mara does not maintain a parallel provider abstraction or custom chat run loop. No network daemon, Python service, graph database, or vector database is required.
 
 ## Consequences
 
@@ -156,7 +157,8 @@ Positive:
 - changed interest/status preserves history through supersession;
 - commitment cannot emerge from message volume alone;
 - relationship context remains independent from computer capability policy;
-- repeated reasoning calls reuse the same Prolog process instead of paying process startup cost per query.
+- repeated reasoning calls reuse the same Prolog process instead of paying process startup cost per query;
+- conversation streaming and tool continuation reuse gptel instead of duplicating transport logic inside Mara.
 
 Costs:
 
