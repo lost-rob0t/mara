@@ -52,21 +52,27 @@
            mara-brain-swipl-program
            mara-brain-prolog-file
            mara-brain-prolog-server-file))
-  (mara-prolog-start (mara-brain--runtime)))
+  (let ((runtime (mara-brain--runtime)))
+    (unless (mara-prolog-live-p runtime)
+      ;; A fresh Prolog process has no in-memory facts, even when memory.json
+      ;; itself has not changed since the previous process died.
+      (setq mara-brain--loaded-memory-stamp nil))
+    (mara-prolog-start runtime)))
 
 (defun mara-brain--memory-stamp ()
-  "Return a cheap identity stamp for the current durable memory file."
+  "Return an identity stamp for the current durable memory state."
   (let* ((path (mara-memory-path))
          (attributes (and (file-exists-p path)
                           (file-attributes path 'string))))
     (when attributes
       (list path
+            mara-memory-revision
             (file-attribute-size attributes)
             (file-attribute-modification-time attributes)))))
 
 (defun mara-brain-sync-memory (&optional force)
   "Load durable memory into persistent Prolog when it changed.
-With FORCE non-nil, reload even when the file stamp is unchanged."
+With FORCE non-nil, reload even when the memory stamp is unchanged."
   (unless mara-memory-current
     (mara-memory-load))
   (let* ((runtime (mara-brain--ensure-runtime))
