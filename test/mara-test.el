@@ -161,6 +161,20 @@
       (mara-run--flush-stream run "Hello")
       (should (equal "Hello" (apply #'concat (nreverse parts)))))))
 
+(ert-deftest mara-run-surfaces-synchronous-provider-errors ()
+  (mara-test-with-state
+    (mara-profile-load)
+    (mara-session-new)
+    (let (reported)
+      (cl-letf (((symbol-function 'mara-provider-stream)
+                 (lambda (&rest _args)
+                   (error "dispatch boom"))))
+        (mara-run-start
+         'fake-provider "hello" #'ignore #'ignore
+         (lambda (error-value) (setq reported error-value))))
+      (should (string-match-p "Provider dispatch failed: dispatch boom" reported))
+      (should-not mara-run-active))))
+
 (ert-deftest mara-visual-response-marker-is-hidden ()
   (pcase-let ((`(,text . ,expression)
                (mara-visual--parse-response
@@ -209,20 +223,41 @@
                     (mara--checkout-root)))))
       (delete-directory repo t))))
 
-(ert-deftest update-mara-runs-git-at-checkout-root ()
-  (let (invocation)
+(ert-deftest update-mara-targets-stable-branch ()
+  (let (calls)
     (cl-letf (((symbol-function 'executable-find)
                (lambda (_program) "/usr/bin/git"))
               ((symbol-function 'mara--checkout-root)
                (lambda () "/tmp/mara/"))
-              ((symbol-function 'process-file)
-               (lambda (program _infile _destination _display &rest args)
-                 (setq invocation (cons program args))
+              ((symbol-function 'mara--checkout-dirty-p)
+               (lambda (_root) nil))
+              ((symbol-function 'mara--git-output)
+               (lambda (_root &rest args)
+                 (if (equal args '("branch" "--show-current"))
+                     "agent/prolog-memory-core"
+                   "")))
+              ((symbol-function 'mara--git-local-branch-p)
+               (lambda (_root branch) (equal branch "main")))
+              ((symbol-function 'mara--git-run)
+               (lambda (_root _buffer &rest args)
+                 (push args calls)
                  0)))
-      (update-mara)
+      (let ((mara-update-branch "main"))
+        (update-mara))
       (should
-       (equal '("git" "-C" "/tmp/mara/" "pull" "--ff-only")
-              invocation)))))
+       (equal '(("fetch" "origin" "main")
+                ("switch" "main")
+                ("merge" "--ff-only" "origin/main"))
+              (nreverse calls))))))
+
+(ert-deftest update-mara-refuses-dirty-checkout ()
+  (cl-letf (((symbol-function 'executable-find)
+             (lambda (_program) "/usr/bin/git"))
+            ((symbol-function 'mara--checkout-root)
+             (lambda () "/tmp/mara/"))
+            ((symbol-function 'mara--checkout-dirty-p)
+             (lambda (_root) t)))
+    (should-error (update-mara) :type 'user-error)))
 
 (provide 'mara-test)
 ;;; mara-test.el ends here
