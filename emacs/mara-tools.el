@@ -81,6 +81,15 @@ CALLBACK receives RESULT and an error flag."
      (equal id (mara--alist-get 'id record)))
    (mara-memory-records)))
 
+(defun mara-tools--memory-active-p (record)
+  "Return non-nil when RECORD has not been superseded."
+  (let ((id (mara--alist-get 'id record)))
+    (not
+     (cl-some
+      (lambda (candidate)
+        (member id (append (mara--alist-get 'supersedes candidate '()) nil)))
+      (mara-memory-records)))))
+
 (defun mara-tools--query-terms (query)
   "Return normalized search terms extracted from QUERY."
   (seq-filter
@@ -119,12 +128,13 @@ CALLBACK receives RESULT and an error flag."
     (reasons . ,(vconcat reasons))))
 
 (defun mara-tools--fallback-memory-hits (query)
-  "Return lexical memory hits for QUERY without requiring Prolog."
+  "Return lexical active-memory hits for QUERY without requiring Prolog."
   (let ((terms (mara-tools--query-terms query))
         hits)
     (dolist (record (mara-memory-records))
       (let ((matches (mara-tools--memory-match-count record terms)))
-        (when (> matches 0)
+        (when (and (mara-tools--memory-active-p record)
+                   (> matches 0))
           (let* ((confidence (or (mara--alist-get 'confidence record) 0.5))
                  (importance (or (mara--alist-get 'importance record) 0.5))
                  (score
@@ -135,7 +145,8 @@ CALLBACK receives RESULT and an error flag."
                           (* importance 0.10)))))
             (push
              (mara-tools--memory-hit
-              record score '("fallback-text-match" "confidence" "importance"))
+              record score '("fallback-text-match" "active-memory"
+                             "confidence" "importance"))
              hits)))))
     (sort hits
           (lambda (a b)
@@ -368,12 +379,10 @@ CALLBACK receives RESULT and an error flag."
         (object . ((type . "string")
                    (description . "The durable value to remember")))
         (summary . ((type . "string")
-                    (description . "Short human-readable summary")
-                    (optional . t)))
+                    (description . "Short human-readable summary")))
         (kind . ((type . "string")
                  (description . "Memory kind")
-                 (enum . ["profile" "event" "record" "derived"])
-                 (optional . t)))))
+                 (enum . ["profile" "event" "record" "derived"])))))
     (required . ["subject" "predicate" "object"]))
   :function #'mara-tools--remember))
 
@@ -390,8 +399,7 @@ CALLBACK receives RESULT and an error flag."
         (object . ((type . "string")
                    (description . "Replacement value")))
         (summary . ((type . "string")
-                    (description . "Short explanation of the correction")
-                    (optional . t)))))
+                    (description . "Short explanation of the correction")))))
     (required . ["memory_id" "object"]))
   :function #'mara-tools--supersede-memory))
 
