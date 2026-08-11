@@ -9,7 +9,7 @@
 (require 'mara-tools)
 
 (cl-defstruct mara-run
-  id provider messages turns tool-count seen-calls timer handle cancelled
+  id provider messages memory-query turns tool-count seen-calls timer handle cancelled
   on-text on-done on-error)
 
 (defvar mara-run-active nil)
@@ -24,6 +24,7 @@
          :id (mara--uuid)
          :provider provider
          :messages (copy-tree (mara-session-messages mara-session-current))
+         :memory-query user-text
          :turns 0 :tool-count 0
          :seen-calls (make-hash-table :test #'equal)
          :cancelled nil
@@ -42,7 +43,7 @@
       (setf (mara-run-handle run)
             (mara-provider-send
              (mara-run-provider run)
-             (list :system (mara-context-system-prompt)
+             (list :system (mara-context-system-prompt (mara-run-memory-query run))
                    :messages (mara-run-messages run))
              (lambda (response) (mara-run--response run response))
              (lambda (error-value) (mara-run--fail run error-value)))))))
