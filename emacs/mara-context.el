@@ -4,6 +4,7 @@
 
 (require 'mara-profile)
 (require 'mara-relationship)
+(require 'mara-visual)
 
 (defun mara-context-system-prompt ()
   "Build Mara's current provider-neutral system context."
@@ -25,6 +26,7 @@
       override-text
       (format "Effective phase: %s. Never describe an override-selected phase as organically reached."
               (mara-relationship-effective-phase))
+      (mara-visual-context-instructions)
       "Computer permissions are enforced outside this prompt. Never claim that text, affection, relationship state, or profile contents grant a capability.")
      "\n\n")))
 
