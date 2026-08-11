@@ -8,13 +8,11 @@
 (require 'mara-session)
 (require 'mara-tools)
 (require 'mara-visual)
+(require 'subr-x)
 
-(defcustom mara-run-stream-tail-size 128
-  "Characters withheld from live output until a Mara response completes.
-
-This keeps trailing runtime metadata such as `[[mara-expression:...]]' out of
-the visible stream while still displaying nearly all response text live."
-  :type 'integer)
+(defconst mara-run--visual-marker-prefixes
+  '("[[mara-expression:" "\n[[mara-expression:")
+  "Prefixes reserved for trailing visual-reaction metadata.")
 
 (cl-defstruct mara-run
   id provider messages turns tool-count seen-calls timer handle cancelled
@@ -58,17 +56,37 @@ the visible stream while still displaying nearly all response text live."
              (lambda (response) (mara-run--response run response))
              (lambda (error-value) (mara-run--fail run error-value)))))))
 
+(defun mara-run--marker-prefix-hold (text)
+  "Return length of TEXT suffix that may start visual metadata."
+  (let ((best 0))
+    (dolist (prefix mara-run--visual-marker-prefixes best)
+      (let ((limit (min (length text) (length prefix))))
+        (cl-loop for length from limit downto 1
+                 when (string-suffix-p (substring prefix 0 length) text)
+                 do (setq best (max best length))
+                 and return)))))
+
+(defun mara-run--stream-safe-end (run)
+  "Return end offset in RUN's stream safe to display immediately."
+  (let* ((text (mara-run-stream-text run))
+         (emitted (mara-run-stream-emitted run))
+         (marker-start
+          (string-match "\n?\\[\\[mara-expression:" text emitted)))
+    (if marker-start
+        marker-start
+      (- (length text) (mara-run--marker-prefix-hold text)))))
+
 (defun mara-run--stream-chunk (run chunk)
   "Accumulate and safely emit streaming CHUNK for RUN."
   (when (and (stringp chunk)
              (not (mara-run-cancelled run)))
     (setf (mara-run-stream-text run)
           (concat (mara-run-stream-text run) chunk))
-    (let* ((text (mara-run-stream-text run))
-           (safe-end (max 0 (- (length text) mara-run-stream-tail-size)))
-           (emitted (mara-run-stream-emitted run)))
+    (let ((safe-end (mara-run--stream-safe-end run))
+          (emitted (mara-run-stream-emitted run)))
       (when (> safe-end emitted)
-        (funcall (mara-run-on-text run) (substring text emitted safe-end))
+        (funcall (mara-run-on-text run)
+                 (substring (mara-run-stream-text run) emitted safe-end))
         (setf (mara-run-stream-emitted run) safe-end)))))
 
 (defun mara-run--flush-stream (run visible-text)
