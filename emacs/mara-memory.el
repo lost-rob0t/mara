@@ -88,38 +88,42 @@
       (user-error "Memory field %s must be a list of strings" field)))
   record)
 
-(defun mara-memory-add (&rest plist)
-  "Add a durable memory record from PLIST and return its ID."
+(cl-defun mara-memory-add (&key kind subject predicate object
+                                (summary "")
+                                (confidence 0.7)
+                                (importance 0.5)
+                                observed-at valid-from valid-to
+                                source-session source-message
+                                supports supersedes tags)
+  "Append one validated memory record and return its ID."
   (unless mara-memory-current
     (mara-memory-load))
-  (let* ((id (or (plist-get plist :id) (mara--uuid)))
-         (record
-          `((id . ,id)
-            (kind . ,(or (plist-get plist :kind) "record"))
-            (subject . ,(or (plist-get plist :subject) "user"))
-            (predicate . ,(or (plist-get plist :predicate) "memory"))
-            (object . ,(or (plist-get plist :object) ""))
-            (summary . ,(or (plist-get plist :summary)
-                            (plist-get plist :object)
-                            ""))
-            (confidence . ,(or (plist-get plist :confidence) 1.0))
-            (importance . ,(or (plist-get plist :importance) 0.5))
-            (observedAt . ,(or (plist-get plist :observed-at) (mara--now)))
-            (supports . ,(or (plist-get plist :supports) '()))
-            (supersedes . ,(or (plist-get plist :supersedes) '()))
-            (tags . ,(or (plist-get plist :tags) '())))))
+  (let* ((id (format "mem-%s" (substring (mara--uuid) 0 24)))
+         (record `((id . ,id)
+                   (kind . ,kind)
+                   (subject . ,subject)
+                   (predicate . ,predicate)
+                   (object . ,object)
+                   (summary . ,summary)
+                   (confidence . ,confidence)
+                   (importance . ,importance)
+                   (observedAt . ,(or observed-at (mara--now)))
+                   (validFrom . ,valid-from)
+                   (validTo . ,valid-to)
+                   (sourceSession . ,source-session)
+                   (sourceMessage . ,source-message)
+                   (supports . ,(or supports '()))
+                   (supersedes . ,(or supersedes '()))
+                   (tags . ,(or tags '())))))
     (mara-memory-validate record)
-    (let ((records (mara-memory-records)))
-      (setf (alist-get 'memories mara-memory-current)
-            (vconcat (append records (list record)))))
+    (setf (alist-get 'memories mara-memory-current)
+          (append (mara-memory-records) (list record)))
     (mara-memory-save)
     id))
 
-(defun mara-memory-add-relationship-signal (subject predicate object
-                                                    &optional summary)
-  "Add a relationship signal for SUBJECT PREDICATE OBJECT.
-The newest record supersedes the previous active value for the same subject and
-predicate while preserving the old record for provenance."
+(defun mara-memory-add-relationship-signal (subject predicate object &optional summary)
+  "Persist current relationship evidence for SUBJECT PREDICATE OBJECT.
+A previous value for the same relation is explicitly superseded."
   (let* ((previous (mara-memory-find-latest subject predicate))
          (previous-id (and previous (mara--alist-get 'id previous))))
     (mara-memory-add
@@ -127,10 +131,15 @@ predicate while preserving the old record for provenance."
      :subject subject
      :predicate predicate
      :object object
-     :summary (or summary (format "%s %s = %s" subject predicate object))
+     :summary (or summary (format "%s %s %s" subject predicate object))
      :confidence 1.0
-     :importance 0.9
-     :supersedes (if previous-id (list previous-id) '())
+     :importance 0.8
+     :source-session
+     (when (and (boundp 'mara-session-current)
+                mara-session-current
+                (fboundp 'mara-session-id))
+       (mara-session-id mara-session-current))
+     :supersedes (if previous-id (list previous-id) nil)
      :tags '("relationship"))))
 
 (provide 'mara-memory)
