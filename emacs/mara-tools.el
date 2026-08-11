@@ -317,7 +317,7 @@ CALLBACK receives RESULT and an error flag."
      `((sessionId . ,(mara-session-id mara-session-current))
        (profile . ,(mara-session-profile mara-session-current))
        (count . ,(length recent))
-       (messages . ,(vconcat recent)))))))
+       (messages . ,(vconcat recent))))))
 
 (defun mara-tools--profile-get (_input)
   "Return the active profile and stable identity configuration."
