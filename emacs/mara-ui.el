@@ -168,30 +168,43 @@ older bespoke Mara transcript UI."
   (define-key mara-mode-map (kbd "C-c C-c") #'mara-cancel)
   (define-key mara-mode-map (kbd "C-c C-v") #'mara-visual-render-scene))
 
-(defun mara-ui--prepare-request (info)
-  "Inject Mara state into the gptel request described by INFO.
+(defun mara-ui--request-info (request)
+  "Return a gptel request info plist for REQUEST.
 
-This runs in gptel's prompt-construction buffer.  The source Mara
-buffer is available through INFO, so the current user turn can drive
-memory retrieval while the durable session mirror is updated once."
-  (when-let* ((source-ref (plist-get info :buffer))
-              (source (get-buffer source-ref)))
-    (when (buffer-live-p source)
-      (let ((query
-             (with-current-buffer source
-               (mara-ui--current-user-text
-                (when-let ((position (plist-get info :position)))
-                  (and (markerp position)
-                       (marker-position position)))))))
-        (when (and (stringp query)
-                   (not (string-empty-p query)))
-          (with-current-buffer source
-            (unless (equal query mara-ui--pending-user-text)
-              (setq mara-ui--pending-user-text query)
-              (mara-session-add-message "user" query)
-              (mara-relationship-note-session-interaction)))
-          (setq-local gptel-system-prompt
-                      (mara-context-system-prompt query)))))))
+Current gptel releases pass their request FSM to prompt transformers even
+though the public option documentation describes an info plist.  Accept both
+forms so Mara survives that upstream transition without depending on FSM
+internals beyond the public accessor."
+  (condition-case nil
+      (gptel-fsm-info request)
+    (error request)))
+
+(defun mara-ui--prepare-request (request)
+  "Inject Mara state into gptel REQUEST before dispatch.
+
+This runs in gptel's prompt-construction buffer.  The source Mara buffer
+is carried in the request info so the current user turn can drive memory
+retrieval.  Dry-run query inspection never mutates Mara's durable session."
+  (let ((info (mara-ui--request-info request)))
+    (when-let* ((source-ref (plist-get info :buffer))
+                (source (get-buffer source-ref)))
+      (when (buffer-live-p source)
+        (let ((query
+               (with-current-buffer source
+                 (mara-ui--current-user-text
+                  (when-let ((position (plist-get info :position)))
+                    (and (markerp position)
+                         (marker-position position)))))))
+          (when (and (stringp query)
+                     (not (string-empty-p query)))
+            (unless (plist-get info :dry-run)
+              (with-current-buffer source
+                (unless (equal query mara-ui--pending-user-text)
+                  (setq mara-ui--pending-user-text query)
+                  (mara-session-add-message "user" query)
+                  (mara-relationship-note-session-interaction))))
+            (setq-local gptel-system-prompt
+                        (mara-context-system-prompt query))))))))
 
 (defun mara-ui--response-text (start end)
   "Return only normal assistant response text between START and END.
