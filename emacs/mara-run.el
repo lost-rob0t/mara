@@ -47,14 +47,20 @@
     (if (>= (mara-run-turns run) mara-run-max-turns)
         (mara-run--fail run "Maximum provider turns exceeded")
       (cl-incf (mara-run-turns run))
-      (setf (mara-run-handle run)
-            (mara-provider-stream
-             (mara-run-provider run)
-             (list :system (mara-context-system-prompt)
-                   :messages (mara-run-messages run))
-             (lambda (chunk) (mara-run--stream-chunk run chunk))
-             (lambda (response) (mara-run--response run response))
-             (lambda (error-value) (mara-run--fail run error-value)))))))
+      (condition-case err
+          (setf (mara-run-handle run)
+                (mara-provider-stream
+                 (mara-run-provider run)
+                 (list :system (mara-context-system-prompt)
+                       :messages (mara-run-messages run))
+                 (lambda (chunk) (mara-run--stream-chunk run chunk))
+                 (lambda (response) (mara-run--response run response))
+                 (lambda (error-value) (mara-run--fail run error-value))))
+        (error
+         (mara-run--fail
+          run
+          (format "Provider dispatch failed: %s"
+                  (error-message-string err))))))))
 
 (defun mara-run--marker-prefix-hold (text)
   "Return length of TEXT suffix that may start visual metadata."
