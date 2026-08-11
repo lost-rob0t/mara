@@ -42,6 +42,19 @@
      ((listp records) records)
      (t nil))))
 
+(defun mara-memory-find-latest (subject predicate)
+  "Return the newest record matching SUBJECT and PREDICATE, or nil."
+  (car
+   (sort
+    (cl-remove-if-not
+     (lambda (record)
+       (and (equal subject (mara--alist-get 'subject record))
+            (equal predicate (mara--alist-get 'predicate record))))
+     (copy-sequence (mara-memory-records)))
+    (lambda (a b)
+      (string> (mara--alist-get 'observedAt a "")
+               (mara--alist-get 'observedAt b "")))))))
+
 (defun mara-memory--score-p (value)
   "Return non-nil when VALUE is a valid normalized score."
   (and (numberp value) (<= 0.0 value) (<= value 1.0)))
@@ -101,21 +114,25 @@
     id))
 
 (defun mara-memory-add-relationship-signal (subject predicate object &optional summary)
-  "Persist relationship evidence for SUBJECT PREDICATE OBJECT."
-  (mara-memory-add
-   :kind "event"
-   :subject subject
-   :predicate predicate
-   :object object
-   :summary (or summary (format "%s %s %s" subject predicate object))
-   :confidence 1.0
-   :importance 0.8
-   :source-session
-   (when (and (boundp 'mara-session-current)
-              mara-session-current
-              (fboundp 'mara-session-id))
-     (mara-session-id mara-session-current))
-   :tags '("relationship")))
+  "Persist current relationship evidence for SUBJECT PREDICATE OBJECT.
+A previous value for the same relation is explicitly superseded."
+  (let* ((previous (mara-memory-find-latest subject predicate))
+         (previous-id (and previous (mara--alist-get 'id previous))))
+    (mara-memory-add
+     :kind "event"
+     :subject subject
+     :predicate predicate
+     :object object
+     :summary (or summary (format "%s %s %s" subject predicate object))
+     :confidence 1.0
+     :importance 0.8
+     :source-session
+     (when (and (boundp 'mara-session-current)
+                mara-session-current
+                (fboundp 'mara-session-id))
+       (mara-session-id mara-session-current))
+     :supersedes (if previous-id (list previous-id) nil)
+     :tags '("relationship"))))
 
 (provide 'mara-memory)
 ;;; mara-memory.el ends here
