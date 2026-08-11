@@ -46,12 +46,11 @@
   (goto-char (point-max)))
 
 (defun mara-ui--input-text ()
-  "Return the current editable input text."
-  (unless (and (markerp mara-ui-input-start)
-               (marker-position mara-ui-input-start))
-    (user-error "Mara input prompt is not available"))
-  (string-trim
-   (buffer-substring-no-properties mara-ui-input-start (point-max))))
+  "Return the current editable input text, or nil when unavailable."
+  (when (and (markerp mara-ui-input-start)
+             (marker-position mara-ui-input-start))
+    (string-trim
+     (buffer-substring-no-properties mara-ui-input-start (point-max)))))
 
 (defun mara-ui--append (speaker text)
   "Append SPEAKER and TEXT to the protected Mara transcript."
@@ -90,35 +89,36 @@
 
 (defun mara-send (&optional text)
   "Send TEXT to Mara asynchronously.
-When TEXT is nil, send the contents of Mara's editable input region."
+When TEXT is nil, send the contents of Mara's editable input region.
+Empty input and submits while no prompt is available are ignored."
   (interactive)
-  (let ((message-text
-         (or text
-             (if (eq major-mode 'mara-mode)
-                 (mara-ui--input-text)
-               (read-string "You: ")))))
-    (unless (and (stringp message-text)
-                 (not (string-empty-p message-text)))
-      (user-error "Message cannot be empty"))
-    (when (eq major-mode 'mara-mode)
-      (mara-ui--remove-prompt))
-    (mara-ui--append "You" message-text)
-    (mara-run-start
-     mara-ui-provider message-text
-     (lambda (chunk)
-       (mara-ui--append "Mara" chunk))
-     (lambda (_response)
-       (with-current-buffer (get-buffer-create mara-ui-buffer-name)
-         (mara-ui--prompt)
-         (when (fboundp 'evil-insert-state)
-           (evil-insert-state)))
-       (message "Mara finished"))
-     (lambda (error-value)
-       (mara-ui--append "Mara error" (format "%S" error-value))
-       (with-current-buffer (get-buffer-create mara-ui-buffer-name)
-         (mara-ui--prompt)
-         (when (fboundp 'evil-insert-state)
-           (evil-insert-state)))))))
+  (let* ((raw-text
+          (or text
+              (if (eq major-mode 'mara-mode)
+                  (mara-ui--input-text)
+                (read-string "You: "))))
+         (message-text (and (stringp raw-text) (string-trim raw-text))))
+    (if (string-empty-p (or message-text ""))
+        nil
+      (when (eq major-mode 'mara-mode)
+        (mara-ui--remove-prompt))
+      (mara-ui--append "You" message-text)
+      (mara-run-start
+       mara-ui-provider message-text
+       (lambda (chunk)
+         (mara-ui--append "Mara" chunk))
+       (lambda (_response)
+         (with-current-buffer (get-buffer-create mara-ui-buffer-name)
+           (mara-ui--prompt)
+           (when (fboundp 'evil-insert-state)
+             (evil-insert-state)))
+         (message "Mara finished"))
+       (lambda (error-value)
+         (mara-ui--append "Mara error" (format "%S" error-value))
+         (with-current-buffer (get-buffer-create mara-ui-buffer-name)
+           (mara-ui--prompt)
+           (when (fboundp 'evil-insert-state)
+             (evil-insert-state))))))))
 
 (defun mara-cancel ()
   "Cancel Mara's active request and restore the input prompt."
