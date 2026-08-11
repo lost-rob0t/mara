@@ -2,6 +2,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'mara-state)
 (require 'mara-memory)
 (require 'mara-brain)
@@ -45,11 +46,12 @@
 
 (defun mara-relationship-load ()
   "Load persistent relationship state and refresh its organic Prolog view."
-  (let ((path (mara-state-path "relationship")))
+  (let* ((path (mara-state-path "relationship"))
+         (fallback (copy-tree mara-relationship--default t)))
     (setq mara-relationship-current
           (if (file-exists-p path)
-              (mara-state-read path mara-relationship--default)
-            (mara-state-write path mara-relationship--default))))
+              (mara-state-read path fallback)
+            (mara-state-write path fallback))))
   (mara-memory-load)
   (mara-relationship--seed-legacy-memory)
   (when (mara-brain-available-p)
@@ -186,6 +188,37 @@ PREDICATE is one of interaction_quality, trust_signal, or boundary_signal."
    :tags '("relationship" "interaction"))
   (when (mara-brain-available-p)
     (mara-relationship-refresh-organic)))
+
+(defun mara-relationship--session-event-p (record session-id)
+  "Return non-nil when RECORD already marks SESSION-ID interaction."
+  (and (equal "event" (mara--alist-get 'kind record))
+       (equal "dyad" (mara--alist-get 'subject record))
+       (equal "session_interaction" (mara--alist-get 'predicate record))
+       (equal session-id (mara--alist-get 'sourceSession record))))
+
+(defun mara-relationship-note-session-interaction ()
+  "Record one relationship interaction event for the current session.
+Repeated turns in the same session do not increase familiarity."
+  (when (and (boundp 'mara-session-current)
+             mara-session-current
+             (fboundp 'mara-session-id))
+    (let ((session-id (mara-session-id mara-session-current)))
+      (unless (cl-some
+               (lambda (record)
+                 (mara-relationship--session-event-p record session-id))
+               (mara-memory-records))
+        (mara-memory-add
+         :kind "event"
+         :subject "dyad"
+         :predicate "session_interaction"
+         :object "occurred"
+         :summary "A Mara conversation session occurred"
+         :confidence 1.0
+         :importance 0.2
+         :source-session session-id
+         :tags '("relationship" "session"))
+        (when (mara-brain-available-p)
+          (mara-relationship-refresh-organic))))))
 
 (provide 'mara-relationship)
 ;;; mara-relationship.el ends here
