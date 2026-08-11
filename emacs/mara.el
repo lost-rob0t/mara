@@ -12,6 +12,7 @@
 (require 'mara-profile)
 (require 'mara-relationship)
 (require 'mara-session)
+(require 'mara-visual)
 (require 'mara-provider-gptel)
 (require 'mara-ui)
 
@@ -24,6 +25,7 @@
   (mara-profile-load profile)
   (mara-relationship-load)
   (mara-session-load-current)
+  (mara-visual-load)
   (setq mara-ui-provider (make-mara-gptel-provider)))
 
 ;;;###autoload
@@ -79,30 +81,38 @@ new runtime is loaded cleanly."
    (list (completing-read "Override phase: "
                           '("dating" "established-relationship") nil t)
          (read-string "Visible reason: " "user-selected practice mode")))
-  (unless mara-relationship-current (mara--initialize))
+  (unless mara-relationship-current
+    (mara--initialize))
   (mara-relationship-set-override phase reason mara-profile-current-name)
   (message "Relationship override enabled visibly for %s" phase)
-  (when (get-buffer mara-ui-buffer-name) (mara-ui-open)))
+  (when (get-buffer mara-ui-buffer-name)
+    (mara-ui-open)))
 
 ;;;###autoload
 (defun mara-disable-relationship-override ()
   "Disable the active relationship override."
   (interactive)
-  (unless mara-relationship-current (mara--initialize))
+  (unless mara-relationship-current
+    (mara--initialize))
   (mara-relationship-disable-override)
   (message "Relationship override disabled; organic state is unchanged")
-  (when (get-buffer mara-ui-buffer-name) (mara-ui-open)))
+  (when (get-buffer mara-ui-buffer-name)
+    (mara-ui-open)))
 
 ;;;###autoload
 (defun mara-status ()
   "Display Mara's inspectable runtime status."
   (interactive)
-  (unless mara-relationship-current (mara--initialize))
-  (message "Mara profile=%s phase=%s override=%s session=%s"
+  (unless mara-relationship-current
+    (mara--initialize))
+  (message "Mara profile=%s phase=%s override=%s session=%s visual=%s"
            mara-profile-current-name
            (mara-relationship-effective-phase)
            (if (mara-relationship-override) "active" "none")
-           (mara-session-id mara-session-current)))
+           (mara-session-id mara-session-current)
+           (if (mara-visual-ready-p)
+               (or (mara-visual-current-expression) "ready")
+             "unbootstrapped")))
 
 (provide 'mara)
 ;;; mara.el ends here
