@@ -1,8 +1,8 @@
 # Mara
 
 Mara is a private, persistent companion and Emacs agent. Emacs remains the
-runtime harness for identity, profiles, sessions, provider calls, UI, visual
-state, and capability control. The memory core adds SWI-Prolog as a local
+runtime harness for identity, profiles, sessions, the Org-native gptel chat,
+visual state, and capability control. The memory core adds SWI-Prolog as a local
 symbolic reasoning layer while durable records remain JSON under Mara's XDG
 data path.
 
@@ -16,7 +16,9 @@ data path.
 ```
 
 Then run `M-x mara`. Mara stores state beneath `mara-data-directory`, which
-defaults to `~/.local/share/mara/`.
+defaults to `~/.local/share/mara/`. Conversation files are ordinary Org files
+under Mara's local `chats/` directory, with `gptel-mode` owning the actual chat
+transport and response insertion.
 
 Mara uses the active `gptel-backend` and `gptel-model`. Anthropic, OpenAI,
 OpenRouter, Ollama and other gptel backends can be switched without migrating
@@ -71,19 +73,41 @@ visual state directory.
 - automatic memory reload after writes or Prolog process restart
 - active/superseded/contradiction reasoning in Prolog
 - symbolic retrieval with confidence/importance reasons
-- query-bounded memory injection into each provider turn
+- query-bounded memory injection into each native gptel turn
 - organic relationship state derived from durable memory evidence when Prolog is active
 - reciprocal-interest and explicit-status gates for dating/established phases
 - familiarity, affinity, trust, and evidence IDs as inspectable derived state
 - explicit, visible, reversible relationship overrides separate from organic history
-- streaming gptel provider with inherited backend/model selection
-- provider-neutral multi-turn tool loop with budgets, timeout, cancellation, and repeated-call detection
-- capability broker and controlled local tools
-- native Evil-friendly `mara-mode` conversation buffer
+- persistent Org-native `mara-mode` with gptel-owned streaming and response insertion
+- native async gptel tools backed by Mara's capability broker
+- no parallel Mara provider abstraction or custom chat run loop
 - stable image-seeded visual identity with cached facial reactions
 - explicit context-aware scene rendering through `C-c C-v`
 - ERT coverage for persistence, memory, Prolog lifecycle, relationship state,
-  streaming, visual-response metadata, context, and sessions
+  native gptel integration, visual-response metadata, context, and sessions
+
+## Native gptel architecture
+
+Mara does not maintain a second chat transport or provider loop. The runtime
+layers state around a normal gptel conversation:
+
+```text
+Mara identity + profile + relationship + memory + capabilities
+        |
+        v
+emacs/mara-ui.el + emacs/mara-gptel.el
+        |
+        v
+gptel-mode in a persistent Org chat
+        |
+        v
+configured gptel backend/model
+```
+
+Prompt transforms inject the current Mara context before gptel realizes each
+request. gptel owns streaming, reasoning display, response insertion, and tool
+continuation. Mara's async tools still execute through `mara-tools-execute`, so
+model output is never treated as authorization.
 
 ## Embedded Prolog runtime
 
@@ -130,7 +154,9 @@ Emacs tests, including persistent Prolog process integration tests when `swipl`
 is installed:
 
 ```sh
-emacs -Q --batch -L emacs -L test -l test/mara-test.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L emacs -L test \
+  -l test/mara-test.el -l test/mara-native-test.el \
+  -f ert-run-tests-batch-and-exit
 ```
 
 Direct Prolog tests:

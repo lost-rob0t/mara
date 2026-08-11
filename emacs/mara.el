@@ -13,7 +13,7 @@
 (require 'mara-relationship)
 (require 'mara-session)
 (require 'mara-visual)
-(require 'mara-provider-gptel)
+(require 'mara-gptel)
 (require 'mara-ui)
 
 (defconst mara-source-directory
@@ -81,8 +81,7 @@ Return the Git exit status."
   (mara-profile-load profile)
   (mara-relationship-load)
   (mara-session-load-current)
-  (mara-visual-load)
-  (setq mara-ui-provider (make-mara-gptel-provider)))
+  (mara-visual-load))
 
 ;;;###autoload
 (defun mara (&optional profile)
@@ -149,9 +148,20 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
         (display-buffer buffer)
         (user-error "Mara update failed; see %s" (buffer-name buffer))))))
 
+(defun mara--chat-state ()
+  "Return a short description of Mara's native gptel chat state."
+  (if-let ((buffer (get-buffer mara-ui-buffer-name)))
+      (if (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (if (bound-and-true-p gptel-mode)
+                "open (gptel-native)"
+              "open (gptel disabled)"))
+        "closed")
+    "closed"))
+
 ;;;###autoload
 (defun mara-doctor ()
-  "Display Mara runtime, Git, gptel and active-run diagnostics."
+  "Display Mara runtime, Git, gptel and native-chat diagnostics."
   (interactive)
   (let* ((git (mara--runtime-git-state))
          (backend-name
@@ -161,7 +171,6 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
          (model (and (boundp 'gptel-model) gptel-model))
          (curl (and (boundp 'gptel-use-curl) gptel-use-curl))
          (source (or (locate-library "mara") "unresolved"))
-         (run-state (if mara-run-active "active" "idle"))
          (report
           (format
            (concat "Mara doctor\n"
@@ -172,7 +181,7 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
                    "gptel backend: %s\n"
                    "gptel model: %s\n"
                    "gptel curl: %S\n"
-                   "run: %s\n")
+                   "chat: %s\n")
            source
            (or (plist-get git :root) "unknown")
            (or (plist-get git :branch) "unknown")
@@ -180,7 +189,7 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
            (or backend-name "unset")
            (or model "unset")
            curl
-           run-state)))
+           (mara--chat-state))))
     (with-current-buffer (get-buffer-create "*Mara Doctor*")
       (let ((inhibit-read-only t))
         (erase-buffer)

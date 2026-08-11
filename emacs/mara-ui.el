@@ -13,17 +13,13 @@
 (require 'org)
 (require 'subr-x)
 (require 'mara-context)
-(require 'mara-gptel-native)
+(require 'mara-gptel)
 (require 'mara-relationship)
-(require 'mara-run)
 (require 'mara-session)
 (require 'mara-visual)
 
 (defvar mara-ui-buffer-name "*Mara*"
   "Canonical buffer name used by the active Mara conversation.")
-
-(defvar mara-ui-provider nil
-  "Compatibility provider handle for the legacy Mara run loop.")
 
 (defcustom mara-ui-directory nil
   "Directory containing persistent Mara Org chats.
@@ -146,7 +142,7 @@ older bespoke Mara transcript UI."
   (setq-local gptel-backend (or mara-gptel-backend gptel-backend))
   (setq-local gptel-model (or mara-gptel-model gptel-model))
   (setq-local gptel-system-prompt (mara-context-system-prompt))
-  (setq-local gptel-tools (mara-gptel-native-tools))
+  (setq-local gptel-tools (mara-gptel-tools))
   (setq-local gptel-use-tools t)
   (setq-local gptel-confirm-tool-calls 'auto)
   (setq-local gptel-include-tool-results t)

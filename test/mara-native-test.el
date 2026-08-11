@@ -4,7 +4,7 @@
 
 (require 'ert)
 (require 'mara)
-(require 'mara-gptel-native)
+(require 'mara-gptel)
 
 (ert-deftest mara-native-mode-is-org-native ()
   (with-temp-buffer
@@ -84,7 +84,7 @@
                (lambda (name input callback)
                  (setq executed (list name input))
                  (funcall callback "ok" nil))))
-      (let* ((tool (car (mara-gptel-native-tools)))
+      (let* ((tool (car (mara-gptel-tools)))
              (function (gptel-tool-function tool)))
         (should (gptel-tool-async tool))
         (should (gptel-tool-confirm tool))
@@ -118,6 +118,24 @@
          (string-match-p
           "private reasoning"
           (buffer-substring-no-properties (point-min) (point-max))))))))
+
+(ert-deftest mara-native-has-no-legacy-chat-libraries ()
+  (should-not (locate-library "mara-run"))
+  (should-not (locate-library "mara-provider"))
+  (should-not (locate-library "mara-provider-gptel"))
+  (should-not (locate-library "mara-gptel-native")))
+
+(ert-deftest mara-doctor-reports-native-chat-state ()
+  (let ((mara-ui-buffer-name " *mara-doctor-native-test*"))
+    (unwind-protect
+        (progn
+          (should (equal "closed" (mara--chat-state)))
+          (with-current-buffer (get-buffer-create mara-ui-buffer-name)
+            (mara-mode)
+            (gptel-mode 1))
+          (should (equal "open (gptel-native)" (mara--chat-state))))
+      (when-let ((buffer (get-buffer mara-ui-buffer-name)))
+        (kill-buffer buffer)))))
 
 (provide 'mara-native-test)
 ;;; mara-native-test.el ends here
