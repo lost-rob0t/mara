@@ -89,5 +89,14 @@
              ((role . "assistant") (content . "hi"))
              ((role . "user") (content . "continue")))))))
 
+(ert-deftest mara-send-ignores-empty-text ()
+  (should-not (mara-send ""))
+  (should-not (mara-send "   \n\t")))
+
+(ert-deftest mara-send-ignores-submit-without-prompt ()
+  (with-temp-buffer
+    (mara-mode)
+    (should-not (mara-send))))
+
 (provide 'mara-test)
 ;;; mara-test.el ends here
