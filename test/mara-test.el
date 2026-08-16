@@ -199,6 +199,66 @@
                     (mara--checkout-root)))))
       (delete-directory repo t))))
 
+(ert-deftest mara-entry-point-selects-chat-slug ()
+  (let (initialized opened)
+    (cl-letf (((symbol-function 'mara--initialize)
+               (lambda (profile chat-slug)
+                 (setq initialized (list profile chat-slug))))
+              ((symbol-function 'mara-ui-open)
+               (lambda () (setq opened t))))
+      (mara "default" "project-alpha")
+      (should (equal '("default" "project-alpha") initialized))
+      (should opened))))
+
+(ert-deftest mara-reload-preserves-profile-chat-and-library-order ()
+  (let* ((root (make-temp-file "mara-reload-test-" t))
+         (source-directory (expand-file-name "emacs/" root))
+         (mara-profile-current-name "red-room")
+         (mara-session-current
+          (make-mara-session :id "2026-08-11--red-room--scene-ideas"
+                             :profile "red-room"
+                             :chat-slug "scene-ideas"))
+         (mara-ui-buffer-name " *mara-reload-test*")
+         (chat-path (expand-file-name "active-chat.org" root))
+         chat-buffer loaded initialized reopened)
+    (unwind-protect
+        (progn
+          (make-directory source-directory)
+          (dolist (library mara--reload-libraries)
+            (with-temp-file
+                (expand-file-name (concat library ".el") source-directory)))
+          (setq chat-buffer (find-file-noselect chat-path))
+          (with-current-buffer chat-buffer
+            (rename-buffer mara-ui-buffer-name)
+            (insert "unsaved chat"))
+          (cl-letf (((symbol-function 'mara--checkout-root)
+                     (lambda () root))
+                    ((symbol-function 'load)
+                     (lambda (file &rest _args)
+                       (push (file-name-base file) loaded)))
+                    ((symbol-function 'mara--initialize)
+                     (lambda (profile chat-slug)
+                       (setq initialized (list profile chat-slug))))
+                    ((symbol-function 'mara-ui-open)
+                     (lambda () (setq reopened t))))
+            (let ((result (mara-reload)))
+              (should (equal mara--reload-libraries (nreverse loaded)))
+              (should (equal '("red-room" "scene-ideas") initialized))
+              (should reopened)
+              (should (equal "unsaved chat"
+                             (string-trim
+                              (with-temp-buffer
+                                (insert-file-contents chat-path)
+                                (buffer-string)))))
+              (should (equal "scene-ideas" (plist-get result :chat-slug)))
+              (should (= (length mara--reload-libraries)
+                         (plist-get result :libraries))))))
+      (when (buffer-live-p chat-buffer)
+        (with-current-buffer chat-buffer
+          (set-buffer-modified-p nil))
+        (kill-buffer chat-buffer))
+      (delete-directory root t))))
+
 (ert-deftest update-mara-targets-stable-branch ()
   (let (calls)
     (cl-letf (((symbol-function 'executable-find)

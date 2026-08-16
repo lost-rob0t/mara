@@ -84,7 +84,9 @@ stable human-readable structure."
     (goto-char (point-min))
     (unless (looking-at-p "#\\+title:")
       (insert
-       (format "#+title: Mara — %s\n" mara-profile-current-name)
+       (format "#+title: Mara — %s — %s\n"
+               mara-profile-current-name
+               (mara-session-chat-slug mara-session-current))
        "#+category: mara\n"
        "#+filetags: :mara:gptel:\n"
        (format "#+property: mara_session %s\n\n"

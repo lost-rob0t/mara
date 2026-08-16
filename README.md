@@ -15,10 +15,20 @@ data path.
 (require 'mara)
 ```
 
-Then run `M-x mara`. Mara stores state beneath `mara-data-directory`, which
-defaults to `~/.local/share/mara/`. Conversation files are ordinary Org files
-under Mara's local `chats/` directory, with `gptel-mode` owning the actual chat
-transport and response insertion.
+Then run `M-x mara`. The prompt defaults to the `default` daily chat slug; enter
+another slug to keep a separate chat for the same day. For the default profile,
+those Org files are named `YYYY-MM-DD--SLUG.org`. Non-default profiles remain
+isolated as `YYYY-MM-DD--PROFILE--SLUG.org`.
+
+Mara stores state beneath `mara-data-directory`, which defaults to
+`~/.local/share/mara/`. Conversation files are ordinary Org files under Mara's
+local `chats/` directory, with `gptel-mode` owning the actual chat transport and
+response insertion. Reopening the same date and slug restores its independent
+JSON session and Org conversation.
+
+After updating or editing Mara, run `M-x mara-reload` to reload all repository
+Emacs Lisp sources without restarting Emacs. It saves an open Mara chat and
+preserves the active profile and chat slug while refreshing the runtime.
 
 Mara uses the active `gptel-backend` and `gptel-model`. Anthropic, OpenAI,
 OpenRouter, Ollama and other gptel backends can be switched without migrating
@@ -79,6 +89,8 @@ visual state directory.
 - familiarity, affinity, trust, and evidence IDs as inspectable derived state
 - explicit, visible, reversible relationship overrides separate from organic history
 - persistent Org-native `mara-mode` with gptel-owned streaming and response insertion
+- independent named daily chats selected by normalized slug
+- source hot reload with active profile and chat preservation
 - native async gptel tools backed by Mara's capability broker
 - no parallel Mara provider abstraction or custom chat run loop
 - stable image-seeded visual identity with cached facial reactions

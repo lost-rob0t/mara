@@ -29,6 +29,24 @@ instead of pulling whichever development branch happens to be checked out."
   :type 'string
   :group 'mara)
 
+(defconst mara--reload-libraries
+  '("mara-core"
+    "mara-state"
+    "mara-profile"
+    "mara-prolog"
+    "mara-memory"
+    "mara-brain"
+    "mara-relationship"
+    "mara-session"
+    "mara-visual"
+    "mara-tools"
+    "mara-context"
+    "mara-gptel"
+    "mara-ui"
+    "mara-zara"
+    "mara")
+  "Mara source libraries in dependency-safe reload order.")
+
 (defun mara--checkout-root ()
   "Return the Git checkout root containing the loaded Mara library."
   (let* ((library (or (locate-library "mara")
@@ -77,31 +95,69 @@ Return the Git exit status."
               :commit (mara--git-output root "rev-parse" "--short" "HEAD")))
     (error nil)))
 
-(defun mara--initialize (&optional profile)
-  "Initialize persistent state for PROFILE."
+(defun mara--initialize (&optional profile chat-slug)
+  "Initialize persistent state for PROFILE and CHAT-SLUG."
   (mara-profile-load profile)
   (mara-relationship-load)
-  (mara-session-load-current)
+  (mara-session-load-current chat-slug)
   (mara-visual-load))
 
 ;;;###autoload
-(defun mara (&optional profile)
-  "Open Mara using optional PROFILE."
-  (interactive)
-  (mara--initialize profile)
+(defun mara (&optional profile chat-slug)
+  "Open Mara using optional PROFILE and CHAT-SLUG."
+  (interactive (list nil (mara-session-read-chat-slug)))
+  (mara--initialize profile chat-slug)
   (mara-ui-open))
 
 ;;;###autoload
-(defun mara-work ()
-  "Open Mara's default work profile."
-  (interactive)
-  (mara "default"))
+(defun mara-work (&optional chat-slug)
+  "Open CHAT-SLUG in Mara's default work profile."
+  (interactive (list (mara-session-read-chat-slug)))
+  (mara "default" chat-slug))
 
 ;;;###autoload
-(defun mara-red-room ()
-  "Open Mara's red-room profile without silently changing relationship state."
+(defun mara-red-room (&optional chat-slug)
+  "Open CHAT-SLUG in Mara's red-room profile.
+
+This does not silently change relationship state."
+  (interactive (list (mara-session-read-chat-slug)))
+  (mara "red-room" chat-slug))
+
+;;;###autoload
+(defun mara-reload ()
+  "Reload Mara source without restarting Emacs.
+
+Preserve the active profile and chat slug, save an open Mara chat before
+reloading, and reopen that chat after every source library is refreshed."
   (interactive)
-  (mara "red-room"))
+  (let* ((profile (or mara-profile-current-name mara-default-profile))
+         (chat-slug
+          (if mara-session-current
+              (mara-session-chat-slug mara-session-current)
+            mara-session-default-chat-slug))
+         (chat-buffer (get-buffer mara-ui-buffer-name))
+         (chat-open (buffer-live-p chat-buffer))
+         (source-directory
+          (expand-file-name "emacs/" (mara--checkout-root))))
+    (when chat-open
+      (with-current-buffer chat-buffer
+        (when mara-ui--pending-user-text
+          (user-error "Mara is responding; cancel the request before reloading"))
+        (when (and buffer-file-name (buffer-modified-p))
+          (save-buffer))))
+    (dolist (library mara--reload-libraries)
+      (let ((source (expand-file-name (concat library ".el") source-directory)))
+        (unless (file-regular-p source)
+          (error "Mara reload source is missing: %s" source))
+        (load source nil 'nomessage t)))
+    (mara--initialize profile chat-slug)
+    (when chat-open
+      (mara-ui-open))
+    (message "Mara reloaded %d libraries; profile=%s chat=%s"
+             (length mara--reload-libraries) profile chat-slug)
+    (list :profile profile
+          :chat-slug chat-slug
+          :libraries (length mara--reload-libraries))))
 
 ;;;###autoload
 (defun update-mara ()
@@ -111,7 +167,7 @@ The checkout is resolved from the loaded Mara library, never from the current
 buffer directory.  The updater refuses to switch branches when the worktree is
 dirty, fetches the configured stable branch from origin, switches to that local
 branch (creating a tracking branch when necessary), and fast-forwards it to the
-remote.  Restart Emacs after a successful update so the new runtime is loaded."
+remote.  Run `mara-reload' after a successful update to load the new runtime."
   (interactive)
   (unless (executable-find "git")
     (user-error "git is not available in PATH"))
@@ -142,7 +198,7 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
     (let ((status (mara--git-run root buffer "merge" "--ff-only" remote-ref)))
       (if (zerop status)
           (progn
-            (message "Mara updated %s to %s; restart Emacs to load changes"
+            (message "Mara updated %s to %s; run M-x mara-reload to load changes"
                      root branch)
             (when (called-interactively-p 'interactive)
               (display-buffer buffer)))
@@ -182,6 +238,7 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
                    "gptel backend: %s\n"
                    "gptel model: %s\n"
                    "gptel curl: %S\n"
+                   "chat slug: %s\n"
                    "chat: %s\n")
            source
            (or (plist-get git :root) "unknown")
@@ -190,6 +247,9 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
            (or backend-name "unset")
            (or model "unset")
            curl
+           (if mara-session-current
+               (mara-session-chat-slug mara-session-current)
+             "none")
            (mara--chat-state))))
     (with-current-buffer (get-buffer-create "*Mara Doctor*")
       (let ((inhibit-read-only t))
@@ -231,8 +291,9 @@ remote.  Restart Emacs after a successful update so the new runtime is loaded."
   (unless mara-relationship-current
     (mara--initialize))
   (let ((git (mara--runtime-git-state)))
-    (message "Mara profile=%s phase=%s override=%s session=%s visual=%s git=%s@%s"
+    (message "Mara profile=%s chat=%s phase=%s override=%s session=%s visual=%s git=%s@%s"
              mara-profile-current-name
+             (mara-session-chat-slug mara-session-current)
              (mara-relationship-effective-phase)
              (if (mara-relationship-override) "active" "none")
              (mara-session-id mara-session-current)
