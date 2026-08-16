@@ -13,6 +13,7 @@
 (require 'mara-relationship)
 (require 'mara-session)
 (require 'mara-visual)
+(require 'mara-zara)
 (require 'mara-gptel)
 (require 'mara-ui)
 
