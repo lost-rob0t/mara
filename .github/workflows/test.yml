@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Zara bridge tests
-        run: python3 -m unittest -v test/test_mara_bridge.py
+        run: python3 -m unittest discover -s test -p 'test_*.py' -v
 
   ert:
     runs-on: ubuntu-latest
