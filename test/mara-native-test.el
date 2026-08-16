@@ -13,6 +13,34 @@
     (should (equal "* You\n" (mara-ui--prompt-prefix)))
     (should (equal "* Mara\n" (mara-ui--response-prefix)))))
 
+(ert-deftest mara-native-named-chats-use-separate-org-buffers ()
+  (mara-test-with-state
+    (let ((mara-ui-buffer-name "*Mara named-chat test*")
+          (today (mara-session--today))
+          first second)
+      (unwind-protect
+          (save-window-excursion
+            (cl-letf (((symbol-function 'gptel-mode) #'ignore)
+                      ((symbol-function 'mara-ui--save) #'ignore))
+              (mara--initialize "default" "project-alpha")
+              (setq first (mara-ui-open))
+              (should (string-suffix-p
+                       (format "%s--project-alpha.org" today)
+                       (buffer-file-name first)))
+              (mara--initialize "default" "default")
+              (setq second (mara-ui-open))
+              (should-not (eq first second))
+              (should (string-suffix-p
+                       (format "%s--default.org" today)
+                       (buffer-file-name second)))
+              (should (equal mara-ui-buffer-name (buffer-name second)))
+              (should (string-match-p "project-alpha" (buffer-name first)))))
+        (dolist (buffer (list first second))
+          (when (buffer-live-p buffer)
+            (with-current-buffer buffer
+              (set-buffer-modified-p nil))
+            (kill-buffer buffer)))))))
+
 (ert-deftest mara-native-request-info-accepts-current-gptel-fsm-shape ()
   (let* ((expected '(:buffer "*Mara*" :dry-run t))
          (fsm (gptel-make-fsm :info expected)))

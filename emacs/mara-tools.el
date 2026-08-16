@@ -316,6 +316,7 @@ CALLBACK receives RESULT and an error flag."
     (mara-tools--json
      `((sessionId . ,(mara-session-id mara-session-current))
        (profile . ,(mara-session-profile mara-session-current))
+       (chatSlug . ,(mara-session-chat-slug mara-session-current))
        (count . ,(length recent))
        (messages . ,(vconcat recent))))))
 
