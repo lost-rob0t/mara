@@ -210,6 +210,13 @@
       (should (equal '("default" "project-alpha") initialized))
       (should opened))))
 
+(ert-deftest mara-reload-bootstrap-tolerates-old-session-structure ()
+  (let ((mara-session-current t)
+        (mara-session-default-chat-slug "default"))
+    (cl-letf (((symbol-function 'mara-session-chat-slug)
+               (lambda (_session) (error "old struct"))))
+      (should (equal "default" (mara--current-chat-slug))))))
+
 (ert-deftest mara-reload-preserves-profile-chat-and-library-order ()
   (let* ((root (make-temp-file "mara-reload-test-" t))
          (source-directory (expand-file-name "emacs/" root))

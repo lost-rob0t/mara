@@ -95,6 +95,17 @@ Return the Git exit status."
               :commit (mara--git-output root "rev-parse" "--short" "HEAD")))
     (error nil)))
 
+(defun mara--current-chat-slug ()
+  "Return the active chat slug, including during a reload migration."
+  (let ((fallback (if (boundp 'mara-session-default-chat-slug)
+                      mara-session-default-chat-slug
+                    "default")))
+    (if mara-session-current
+        (condition-case nil
+            (mara-session-chat-slug mara-session-current)
+          (error fallback))
+      fallback)))
+
 (defun mara--initialize (&optional profile chat-slug)
   "Initialize persistent state for PROFILE and CHAT-SLUG."
   (mara-profile-load profile)
@@ -132,9 +143,7 @@ reloading, and reopen that chat after every source library is refreshed."
   (interactive)
   (let* ((profile (or mara-profile-current-name mara-default-profile))
          (chat-slug
-          (if mara-session-current
-              (mara-session-chat-slug mara-session-current)
-            mara-session-default-chat-slug))
+          (mara--current-chat-slug))
          (chat-buffer (get-buffer mara-ui-buffer-name))
          (chat-open (buffer-live-p chat-buffer))
          (source-directory
@@ -247,9 +256,7 @@ remote.  Run `mara-reload' after a successful update to load the new runtime."
            (or backend-name "unset")
            (or model "unset")
            curl
-           (if mara-session-current
-               (mara-session-chat-slug mara-session-current)
-             "none")
+           (if mara-session-current (mara--current-chat-slug) "none")
            (mara--chat-state))))
     (with-current-buffer (get-buffer-create "*Mara Doctor*")
       (let ((inhibit-read-only t))
@@ -293,7 +300,7 @@ remote.  Run `mara-reload' after a successful update to load the new runtime."
   (let ((git (mara--runtime-git-state)))
     (message "Mara profile=%s chat=%s phase=%s override=%s session=%s visual=%s git=%s@%s"
              mara-profile-current-name
-             (mara-session-chat-slug mara-session-current)
+             (mara--current-chat-slug)
              (mara-relationship-effective-phase)
              (if (mara-relationship-override) "active" "none")
              (mara-session-id mara-session-current)
