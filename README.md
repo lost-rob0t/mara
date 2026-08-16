@@ -83,8 +83,31 @@ visual state directory.
 - no parallel Mara provider abstraction or custom chat run loop
 - stable image-seeded visual identity with cached facial reactions
 - explicit context-aware scene rendering through `C-c C-v`
+- Mara-owned, loopback-only Zara HTTP/SSE service plugin with bounded resources
+- Emacs commands to install, inspect, update, and remove the Zara bridge
 - ERT coverage for persistence, memory, Prolog lifecycle, relationship state,
   native gptel integration, visual-response metadata, context, and sessions
+
+## Zara bridge
+
+Mara owns its Zara integration; Zara remains a generic desktop runtime. Install
+the repository's bridge source into Zara's normal user-plugin directory with:
+
+```text
+M-x mara-zara-install
+```
+
+Restart Zara after installation, then use `M-x mara-zara-status` to distinguish
+`current`, `outdated`, `not-installed`, and foreign files. Remove only Mara's
+owned bridge with `M-x mara-zara-uninstall`. The installer refuses to overwrite
+or remove a file without Mara's ownership marker.
+
+The bridge binds only to `127.0.0.1`, has no authentication, and defaults to
+port 7319. It exposes provider-neutral Zara status and runtime events plus the
+runtime commands Zara currently supports. It does not reach into Qt, speech
+providers, timers, notifications, or Pets directly. See
+[Mara's Zara bridge](docs/architecture/zara-bridge.md) for routes,
+configuration, limits, and lifecycle details.
 
 ## Native gptel architecture
 
@@ -163,6 +186,12 @@ Direct Prolog tests:
 
 ```sh
 swipl -q -s prolog/test_mara_memory.pl -g run_tests -t halt
+```
+
+Bridge tests use only the Python standard library:
+
+```sh
+python3 -m unittest -v test/test_mara_bridge.py
 ```
 
 ## Security model
