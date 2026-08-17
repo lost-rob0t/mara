@@ -57,6 +57,11 @@
   :type 'string
   :group 'mara/visual)
 
+(defcustom mara-visual-scene-buffer-name "*the-scene*"
+  "Buffer used to display freshly generated Mara scenes."
+  :type 'string
+  :group 'mara/visual)
+
 (defcustom mara-visual-bootstrap-expressions
   '(("neutral" . "calm neutral resting expression")
     ("happy" . "warm genuine smile")
@@ -394,8 +399,9 @@
     "Do not mention or explain this marker in prose; the runtime strips it before display and persistence.")
    (mapconcat #'car mara-visual-bootstrap-expressions ", ")))
 
-(defun mara-visual-display (&optional file)
-  "Display FILE, or Mara's current visual image, in a right-side buffer."
+(defun mara-visual-display (&optional file buffer-name)
+  "Display FILE, or Mara's current visual image, in a right-side buffer.
+BUFFER-NAME defaults to `mara-visual-buffer-name'."
   (interactive)
   (unless mara-visual-current
     (mara-visual-load))
@@ -405,7 +411,7 @@
                   (mara--alist-get 'currentImage mara-visual-current)))))
     (unless (and image-file (file-readable-p image-file))
       (user-error "Mara has no readable visual image yet; run M-x mara-visual-bootstrap"))
-    (let ((buffer (get-buffer-create mara-visual-buffer-name)))
+    (let ((buffer (get-buffer-create (or buffer-name mara-visual-buffer-name))))
       (with-current-buffer buffer
         (let ((inhibit-read-only t))
           (mara-visual-mode)
@@ -463,7 +469,7 @@
         (alist-get 'lastScene mara-visual-current) file
         (alist-get 'updatedAt mara-visual-current) (mara--now))
   (mara-visual-save)
-  (mara-visual-display file)
+  (mara-visual-display file mara-visual-scene-buffer-name)
   (message "Mara scene rendered: %s" file))
 
 (defun mara-visual--scene-error (error-value)
