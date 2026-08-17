@@ -149,7 +149,28 @@
         (funcall function
                  (lambda (value) (setq callback-value value)))))
     (should (multibyte-string-p callback-value))
-    (should (equal "{\"summary\":\"hello — babe\"}" callback-value))))
+    (should (equal "{\"summary\":\"hello — babe\"}" callback-value))
+    (should (stringp (json-serialize callback-value)))))
+
+(ert-deftest mara-native-tool-repairs-raw-utf8-in-multibyte-result ()
+  (let* ((expected "{\"summary\":\"hello — babe 💙\"}")
+         (raw-result (encode-coding-string expected 'utf-8))
+         poisoned)
+    ;; Reproduce the exact second failure mode: a stale/unfixed tool adapter
+    ;; inserts unibyte UTF-8 bytes into a multibyte Org buffer.  Emacs preserves
+    ;; the high bytes as raw-byte characters; the string is technically
+    ;; multibyte but is not valid JSON text.
+    (with-temp-buffer
+      (set-buffer-multibyte t)
+      (insert raw-result)
+      (setq poisoned (buffer-string)))
+    (should (multibyte-string-p poisoned))
+    (should-not (mara-gptel--json-safe-string-p poisoned))
+    (let ((normalized (mara-gptel--normalize-tool-result poisoned)))
+      (should (multibyte-string-p normalized))
+      (should (equal expected normalized))
+      (should (mara-gptel--json-safe-string-p normalized))
+      (should (stringp (json-serialize normalized))))))
 
 (ert-deftest mara-native-response-keeps-reasoning-out-of-session-text ()
   (with-temp-buffer
