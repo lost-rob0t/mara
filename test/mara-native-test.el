@@ -178,6 +178,31 @@
        (stringp
         (json-serialize `((value . ,normalized))))))))
 
+(ert-deftest mara-native-mode-repairs-persisted-poisoned-tool-text ()
+  (let* ((expected "{\"summary\":\"stored — safely 💙\"}")
+         (raw-result (encode-coding-string expected 'utf-8)))
+    (with-temp-buffer
+      (set-buffer-multibyte t)
+      (insert "* Mara\n")
+      (let ((tool-start (point)))
+        (insert raw-result)
+        (add-text-properties tool-start (point) '(gptel tool)))
+      (should
+       (cl-some #'mara-gptel--raw-byte-char-p
+                (buffer-substring-no-properties (point-min) (point-max))))
+      ;; Opening/reloading a Mara chat reapplies mara-mode, whose hook migrates
+      ;; stale tool output in place.
+      (mara-mode)
+      (should
+       (equal (concat "* Mara\n" expected)
+              (buffer-substring-no-properties (point-min) (point-max))))
+      (should
+       (mara-gptel--unicode-string-p
+        (buffer-substring-no-properties (point-min) (point-max))))
+      (goto-char (point-min))
+      (search-forward "—")
+      (should (eq 'tool (get-text-property (1- (point)) 'gptel))))))
+
 (ert-deftest mara-native-response-keeps-reasoning-out-of-session-text ()
   (with-temp-buffer
     (mara-mode)
