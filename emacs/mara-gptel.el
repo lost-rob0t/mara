@@ -126,13 +126,13 @@ next automatic gptel request."
        "Mara capability/tool error: tool returned undecodable text (%d chars)"
        (length text)))))
 
-(defun mara-gptel--repair-buffer-raw-utf8 ()
+(defun mara-gptel--repair-buffer-raw-utf8 (&rest _ignored)
   "Repair raw UTF-8 byte runs already present in the current Mara chat.
 
 A failed tool continuation can leave the malformed result in the persistent Org
-buffer.  Repair those byte runs in place when `mara-mode' starts, preserving the
-text properties gptel uses to identify tool records.  Return the number of
-repaired runs."
+buffer.  Repair those byte runs in place before `mara-mode' enters `org-mode',
+preserving the text properties gptel uses to identify tool records.  Return the
+number of repaired runs.  IGNORED accepts advice arguments defensively."
   (if (not enable-multibyte-characters)
       0
     (let ((inhibit-read-only t)
@@ -165,6 +165,13 @@ repaired runs."
         (message "Mara repaired %d stale UTF-8 tool-result byte run%s"
                  count (if (= count 1) "" "s")))
       count)))
+
+(defun mara-gptel--install-mode-repair-advice ()
+  "Install Mara's pre-mode byte repair exactly once."
+  (when (and (fboundp 'mara-mode)
+             (not (advice-member-p
+                   #'mara-gptel--repair-buffer-raw-utf8 'mara-mode)))
+    (advice-add 'mara-mode :before #'mara-gptel--repair-buffer-raw-utf8)))
 
 (defun mara-gptel--tool-function (tool)
   "Return an async gptel function that executes Mara TOOL via the broker."
@@ -207,9 +214,13 @@ remains the authorization boundary."
      mara-tools-registry)
     (nreverse tools)))
 
-;; `mara-ui-open' deliberately reapplies `mara-mode' whenever a chat is opened
-;; or reloaded, so this also migrates already-poisoned persistent chat files.
-(add-hook 'mara-mode-hook #'mara-gptel--repair-buffer-raw-utf8)
+;; Repair must run before the derived mode calls Org: Org itself can hash or
+;; persist the buffer while initializing, and raw-byte text can trigger coding
+;; system selection before `mara-mode-hook' would ever get a chance to run.
+;; `with-eval-after-load' also re-runs after hot-reloading mara-ui.el, so the
+;; advice survives Mara's dependency-ordered source reload.
+(with-eval-after-load 'mara-ui
+  (mara-gptel--install-mode-repair-advice))
 
 (provide 'mara-gptel)
 ;;; mara-gptel.el ends here
