@@ -8,6 +8,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'json)
 (require 'gptel-request)
 (require 'mara-tools)
 (require 'subr-x)
@@ -55,18 +56,72 @@ When nil, inherit the user's current `gptel-model'."
        (car property)))
    (mara--alist-get 'properties schema)))
 
+(defun mara-gptel--json-safe-string-p (text)
+  "Return non-nil when TEXT can be represented as a JSON string."
+  (condition-case nil
+      (progn
+        (json-serialize text)
+        t)
+    (wrong-type-argument nil)
+    (error nil)))
+
+(defun mara-gptel--raw-byte-char-p (char)
+  "Return non-nil when CHAR is Emacs' multibyte raw-byte representation."
+  (and (>= char #x3fff80)
+       (<= char #x3fffff)))
+
+(defun mara-gptel--decode-raw-utf8-runs (text)
+  "Decode raw UTF-8 byte runs embedded in multibyte TEXT.
+
+Inserting a unibyte UTF-8 string into a multibyte Org buffer does not decode
+UTF-8.  Emacs preserves bytes 128..255 as raw-byte characters instead.  This
+function decodes contiguous raw-byte runs while leaving already-valid Unicode
+characters untouched."
+  (with-temp-buffer
+    (set-buffer-multibyte t)
+    (let ((index 0)
+          (text-length (length text)))
+      (while (< index text-length)
+        (let ((char (aref text index)))
+          (if (mara-gptel--raw-byte-char-p char)
+              (let (bytes)
+                (while (and (< index text-length)
+                            (mara-gptel--raw-byte-char-p
+                             (aref text index)))
+                  (push (- (aref text index) #x3fff00) bytes)
+                  (setq index (1+ index)))
+                (insert
+                 (decode-coding-string
+                  (apply #'unibyte-string (nreverse bytes))
+                  'utf-8)))
+            (insert-char char)
+            (setq index (1+ index))))))
+    (buffer-string)))
+
 (defun mara-gptel--normalize-tool-result (result)
   "Return RESULT as Unicode text safe for gptel insertion and serialization.
 
-Native JSON helpers use `json-serialize', which returns a unibyte UTF-8
-string.  Passing that byte string directly into a multibyte Org chat can leave
-raw eight-bit characters in the conversation.  A later gptel request then
-fails while JSON-serializing the conversation.  Decode unibyte tool text at
-the Mara/gptel boundary so tool continuations always see valid Unicode."
-  (cond
-   ((not (stringp result)) (format "%s" result))
-   ((multibyte-string-p result) result)
-   (t (decode-coding-string result 'utf-8 t))))
+`json-serialize' returns a unibyte UTF-8 string.  Mara normally decodes that
+before gptel inserts the result into the Org chat.  A stale adapter or an
+already-inserted result can additionally turn those bytes into multibyte raw
+characters; `multibyte-string-p' alone therefore does not prove the value is
+valid Unicode.  Normalize both representations and validate the final string
+before handing it to gptel so one bad tool result cannot poison the automatic
+continuation request."
+  (let* ((text (if (stringp result) result (format "%s" result)))
+         (normalized
+          (cond
+           ((not (multibyte-string-p text))
+            (decode-coding-string text 'utf-8))
+           ((mara-gptel--json-safe-string-p text)
+            text)
+           (t
+            (mara-gptel--decode-raw-utf8-runs text)))))
+    (if (mara-gptel--json-safe-string-p normalized)
+        normalized
+      (format
+       "Mara capability/tool error: tool returned invalid Unicode text (%d chars)"
+       (length text)))))
 
 (defun mara-gptel--tool-function (tool)
   "Return an async gptel function that executes Mara TOOL via the broker."
