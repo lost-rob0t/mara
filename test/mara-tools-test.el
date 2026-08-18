@@ -27,6 +27,13 @@
                   "mara_profile_get"))
     (should (mara-tool-p (gethash name mara-tools-registry)))))
 
+(ert-deftest mara-tools-json-returns-decoded-unicode ()
+  (let* ((summary "tool result — unicode survives 😭")
+         (json (mara-tools--json `((summary . ,summary))))
+         (parsed (mara-tools-test--parse json)))
+    (should (multibyte-string-p json))
+    (should (equal summary (mara--alist-get 'summary parsed)))))
+
 (ert-deftest mara-tools-memory-search-falls-back-without-prolog ()
   (mara-test-with-state
     (cl-letf (((symbol-function 'mara-brain-available-p)
