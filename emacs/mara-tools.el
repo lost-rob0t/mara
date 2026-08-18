@@ -64,8 +64,13 @@ CALLBACK receives RESULT and an error flag."
     (mara-session-load-current)))
 
 (defun mara-tools--json (value)
-  "Serialize VALUE for a native tool response."
-  (json-serialize value :null-object nil :false-object :json-false))
+  "Serialize VALUE as Unicode JSON text for a native tool response."
+  (let ((json (json-serialize value
+                              :null-object nil
+                              :false-object :json-false)))
+    (if (multibyte-string-p json)
+        json
+      (decode-coding-string json 'utf-8))))
 
 (defun mara-tools--required-string (input key)
   "Return required non-empty string KEY from INPUT."
