@@ -142,3 +142,50 @@ everything works offline.
 None. The existing generic plugin API (configuration, subscribe,
 start_worker, dispatch) covers everything. No Mara-specific code exists in
 Zarathushtra, and Pets is untouched.
+
+## Using it without Emacs
+
+The plugin is a normal Zara service plugin: install it once, run Zara, and
+control it over the localhost HTTP API from any client. Emacs is optional.
+
+Install without Emacs (repo root, stdlib-only, no network needed for the
+plugin itself):
+
+```sh
+tools/mara-avatar install          # plugin -> ~/.zarathushtra/plugins/
+                                   # renderer -> ~/.local/share/mara/renderer
+                                   # runs npm install when npm exists
+mara-avatar doctor                 # installation + renderer + server report
+```
+
+`install` refuses to overwrite a foreign `mara_avatar.py`, copies atomically,
+preserves an existing `renderer/node_modules`, and can skip npm with
+`--skip-npm`. `uninstall` removes only Mara-owned files. Override locations
+with `--zara-plugins-dir` and `--data-dir`.
+
+Control without Emacs:
+
+```sh
+mara-avatar status
+mara-avatar show | hide | unload
+mara-avatar import "My Avatar" ~/models/my.vrm
+mara-avatar select my-avatar-1a2b3c4d
+mara-avatar emotion happy
+mara-avatar gesture wave
+mara-avatar animation play wave --loop --speed 1.5
+mara-avatar framing full
+mara-avatar speech-begin | speech-audio clip.pcm | speech-end
+mara-avatar gaze user
+```
+
+The same operations remain available over HTTP (`/v1/avatar/...`), so Emacs,
+a browser page, a phone client, or curl are all equal citizens:
+
+```sh
+curl -s http://127.0.0.1:7321/v1/avatar/status
+curl -s -X POST http://127.0.0.1:7321/v1/avatar/gesture \
+     -H 'Content-Type: application/json' -d '{"gesture":"wave"}'
+```
+
+The Emacs commands in `emacs/mara-avatar.el` are exactly this HTTP surface
+plus an ownership-safe installer; they remain optional.

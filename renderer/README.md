@@ -11,6 +11,15 @@ exposes Three.js objects across that boundary.
 
 ## Install (once)
 
+Either let the installer do it (no Emacs needed):
+
+```sh
+tools/mara-avatar install            # copies renderer to ~/.local/share/mara
+                                     # and runs npm install there
+```
+
+Or manually:
+
 ```sh
 cd renderer
 npm install

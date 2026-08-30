@@ -97,3 +97,9 @@ capabilities were deliberately NOT added "just in case".
   nothing explicit is set.
 - Emacs client: emacs/mara-avatar.el (status/show/hide/select/emotion/gesture
   + ownership-safe installer) with ERT coverage in test/mara-avatar-test.el.
+- Standalone CLI: tools/mara-avatar — install/uninstall/doctor plus the full
+  control surface (status, import/select, emotion/gesture, animation,
+  speech lifecycle, framing/transform/gaze) over the same localhost HTTP
+  API. Emacs is now strictly optional: install and control both work from a
+  plain shell; mara-avatar.el remains a thin optional client over the same
+  protocol.
