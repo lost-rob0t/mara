@@ -1,0 +1,255 @@
+# Waifu4-Mobile black-box capability inventory
+
+Reference products (observed as black boxes, never copied):
+
+- https://github.com/xsploit/Waifu4-Mobile (public README and observable behavior)
+- https://github.com/xsploit/Waifu4 (upstream desktop/browser source; not publicly
+  accessible at the time of this inventory, so behaviors are taken from the
+  mobile product's observable feature descriptions)
+
+Method: observe behavior -> derive requirement -> design Mara-native
+implementation. Bundled avatar models, character identities (Riko, Hikari,
+Neuro-sama), textures, VRMA/BVH/FBX catalogs, and persona prompts are
+character-specific assets and are explicitly NOT reproduced.
+
+## 1. Observed capabilities
+
+### 1.1 VRM loading and library management
+
+Observed behavior:
+
+- The app ships bundled VRM characters and a full-screen VRM stage.
+- Users can import additional `.vrm` files through a document picker.
+- Imported avatars live in app-private storage.
+- Users can switch between avatars (select) and delete them from the library.
+
+Derived requirements:
+
+- avatar.import / avatar.list / avatar.select / avatar.delete operations.
+- Avatars stored in Mara-owned local storage, not in a product bundle.
+- Imported files must be validated before acceptance; a corrupt VRM must be
+  rejected with useful diagnostics and must not destabilize the plugin.
+
+Mara-native design:
+
+- Avatar library under Mara's XDG data directory (`avatars/`), configurable.
+- Minimal glTF-binary validation (magic, chunk layout, VRM extension marker)
+  before import; sha256-based identity; slugified display names.
+
+### 1.2 VRM rendering
+
+Observed behavior:
+
+- Full-screen VRM viewport packaging a Three.js renderer locally.
+- MToon material path with outline, shade/rim tuning, RGB correction, and
+  exposure controls.
+- Key/fill/rim/hemisphere/ambient light controls.
+- VRM 0.x and VRM 1.0 models both load (the bundled set spans both).
+- Spring bones (hair/cloth physics) render correctly.
+
+Derived requirements:
+
+- Local real-time renderer supporting VRM 0.x and 1.0, humanoid skeletons,
+  MToon, expressions, spring bones.
+- Lighting controls exposed through a narrow protocol.
+- Works offline once local assets (npm packages, fonts, textures) are installed.
+
+Mara-native design:
+
+- Three.js + @pixiv/three-vrm renderer app under `renderer/`.
+- Renderer speaks newline-delimited JSON over stdio with the plugin process.
+- Narrow protocol: LoadAvatar, UnloadAvatar, SetExpression, SetTransform,
+  SetCamera, SetGaze, SetVisemes, PlayAnimation, StopAnimation, SetLighting,
+  Shutdown. No Three.js objects cross the boundary.
+
+### 1.3 Framing and transform
+
+Observed behavior:
+
+- Half-body and full-body camera framing presets.
+- Model X/Y/Z position, scale, and XYZ rotation controls.
+
+Derived requirements:
+
+- avatar.framing.get/set with named presets.
+- avatar.transform.get/set for position, rotation (euler degrees), scale.
+
+Mara-native design:
+
+- Typed transform/framing structures in avatar state; validated ranges;
+  renderer receives normalized values only.
+
+### 1.4 Presence-like behavior (blink, gaze, idle motion)
+
+Observed behavior:
+
+- Auto blink without any model involvement.
+- Procedural gaze.
+- Subtle idle motion (breathing/micro-movement) keeping the avatar alive.
+- Configurable arm/torso clipping guard.
+
+Derived requirements:
+
+- Procedural, non-LLM-driven life-like behavior: blink, breathing, bounded
+  gaze drift, subtle head movement.
+- Deterministic where tests need determinism (seeded randomness).
+
+Mara-native design:
+
+- Procedural presence runs inside the renderer per-frame loop with a seed
+  provided at load; the plugin never asks the model or the LLM about blinking.
+
+### 1.5 Animation
+
+Observed behavior:
+
+- VRMA clips with normalized humanoid retargeting.
+- BVH catalogs and FBX base clips (idle/thinking families).
+- Safe ambient clips play in a shuffled, non-repeating loop.
+- Manual selection exposes a larger gesture/emotion/pose/dance/movement
+  library without automatically dropping into unsafe full-body poses.
+- Animation loop, speed, duration controls, reactions, and one-second
+  crossfades between animations.
+
+Derived requirements:
+
+- Animation abstraction over VRMA (primary), BVH and FBX where practical.
+- Semantic animation names (idle, thinking, wave, nod, shrug, happy, sad,
+  annoyed, excited); raw filenames never reach Mara or the LLM.
+- play / stop / loop / speed / duration / crossfade.
+- Safe idle scheduling: idle shuffle only draws from an explicitly whitelisted
+  ambient set, is non-repeating, and returns to idle afterwards.
+
+Mara-native design:
+
+- AnimationPolicy: semantic-name registry, per-clip descriptors (format,
+  safe-for-idle flag, default duration), queue with crossfade timing, seeded
+  non-repeating shuffle for idle selection.
+- Renderer maps semantic names to files via its local manifest.
+
+### 1.6 Expressions and emotion
+
+Observed behavior:
+
+- LLM metadata (filtered from visible/spoken text) drives emotion and
+  expression state.
+- Expression presets map onto VRM expression morphs.
+
+Derived requirements:
+
+- Semantic expression vocabulary: neutral, happy, sad, angry, annoyed,
+  relaxed, surprised, excited, embarrassed.
+- Emotion events alter expressions deterministically; the LLM never emits
+  morph names, bone names, or renderer details.
+- Graceful fallback when a VRM lacks specific expressions; missing morph
+  targets must not crash anything.
+
+Mara-native design:
+
+- ExpressionPolicy with per-avatar capability sets (reported by the renderer
+  after LoadAvatar) and fallback chains
+  (requested -> native -> composed -> happy -> neutral).
+- Mara semantic events (`mara.emotion.*`) and an explicit `avatar.emotion.set`
+  protocol operation are the only inputs; no text scraping.
+
+### 1.7 Speech state and audio-driven lip sync
+
+Observed behavior:
+
+- Mouth motion is derived from the audio that is actually playing: native
+  analysis produces amplitude, frequency bands, and A/I/U/E/O weights.
+- Hybrid mode blends estimated visemes with volume energy; direct mode uses
+  viseme output more literally.
+- Smoothing, mouth gain, and volume influence are adjustable.
+- The first decoded audio primes lip sync before playback to avoid a silent
+  open-mouth start.
+- Speech can be stopped; the app has a stop control.
+
+Derived requirements:
+
+- Lip sync driven by real playback audio, not by generated text.
+- A/I/U/E/O viseme weights, amplitude, relevant audio features, smoothing,
+  gain, volume influence, direct and hybrid modes, silence reset.
+- Speech lifecycle: begin, audio, end, cancel. End/cancel must zero visemes,
+  close the mouth, cancel pending mouth motion, and restore presence. Mara
+  must never be left frozen with an open mouth.
+
+Mara-native design:
+
+- Provider-neutral VisemeAnalyzer over PCM16 audio chunks (pure stdlib DSP:
+  RMS amplitude, zero-crossing rate, one-pole band energies) with EMA
+  smoothing, gain, silence reset, and direct/hybrid/analyzed modes.
+- `avatar.speech.*` protocol operations feed the analyzer; the analyzer's
+  output is sent to the renderer as SetVisemes.
+- No dependency on Fish Audio or any specific TTS provider.
+
+### 1.8 Narrow renderer boundary
+
+Observed behavior:
+
+- The renderer is embedded behind one small local bridge; the app sends
+  "state and typed commands" to it. The renderer has no remote page and no
+  host dependency.
+
+Derived requirements:
+
+- One serialized authority (Mara: AvatarActor) owns avatar state; UI, HTTP
+  handlers, and event subscribers send commands to it.
+- The renderer is replaceable independently of the agent.
+
+Mara-native design:
+
+- AvatarActor is the single writer; everything else posts commands.
+- RendererHost isolates the child process: spawn, request/response with
+  timeouts, crash detection, bounded restart, deterministic shutdown.
+
+### 1.9 Failure isolation and shutdown
+
+Observed behavior (product-level expectations):
+
+- The companion app keeps working when optional services fail; the renderer
+  is a replaceable component, not the app's core.
+
+Derived requirements:
+
+- Zara without Mara works. Mara without the avatar plugin works. Mara with
+  the avatar plugin works.
+- Renderer init failure or crash must not kill Mara or Zara.
+- Shutdown must terminate the renderer process, actor workers, audio workers,
+  subscriptions, and owned threads. No orphan processes.
+
+Mara-native design:
+
+- The plugin is optional by construction (a separate Zara service plugin).
+- Renderer spawn/startup failure degrades to "avatar unavailable" while the
+  plugin answers status; crash triggers bounded restart with backoff.
+- stop() closes subscriptions, stops the actor, terminates the renderer, and
+  joins all threads.
+
+## 2. Explicit non-goals (character-asset firewall)
+
+- No bundled VRMs, textures, or character identities from the reference
+  products.
+- No Waifu4 VRMA/BVH/FBX catalogs; Mara uses its own semantic animation
+  manifest with user-provided or generated fixtures.
+- No personas, prompts, or character metadata from the reference products.
+- No Fish Audio coupling; lip sync is provider-neutral.
+- Pets (Zara's `zara.pets`) remains a separate plugin; the avatar plugin shares
+  nothing with it.
+
+## 3. Capability parity checklist (Mara milestone)
+
+| Reference behavior                   | Mara equivalent                                   |
+|--------------------------------------+---------------------------------------------------|
+| VRM import/list/select/delete        | avatar.import/list/select/delete over HTTP        |
+| VRM 0.x + 1.0, MToon, spring bones   | Three.js + @pixiv/three-vrm renderer              |
+| Half/full-body framing               | avatar.framing.set ("half"/"full")                |
+| Position/scale/rotation              | avatar.transform.get/set                          |
+| Auto blink, procedural gaze          | renderer procedural presence (seeded)             |
+| Safe shuffled idle autoplay          | AnimationPolicy idle scheduler (seeded, whitelisted) |
+| Loop/speed/duration/crossfade        | avatar.animation.play parameters                  |
+| Emotion -> expression                | ExpressionPolicy fallback chains                  |
+| Audio-driven A/I/U/E/O lip sync      | VisemeAnalyzer + SetVisemes                       |
+| Hybrid/direct modes, smoothing, gain | VisemeAnalyzer modes and parameters               |
+| Speech stop resets mouth             | speech.end/cancel zero-viseme reset               |
+| Narrow renderer bridge               | AvatarActor -> RendererHost stdio NDJSON          |
