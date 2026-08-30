@@ -119,6 +119,17 @@ class RendererHostTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             host.start()
 
+    def test_renderer_exits_on_parent_stdin_close(self) -> None:
+        # Orphan-prevention contract: if the plugin dies without sending
+        # Shutdown, the child must exit when the stdin pipe closes.
+        host = self.make_host()
+        host.start()
+        process = host.process
+        process.stdin.close()
+        self.assertIsNotNone(
+            process.poll() if process.wait(timeout=5) == 0 else None
+        )
+
     def test_restart_after_crash(self) -> None:
         host = self.make_host()
         host.start()

@@ -761,12 +761,6 @@ class RendererRequestError(Exception):
     """A renderer request failed, timed out, or was answered with an error."""
 
 
-@dataclasses.dataclass(frozen=True)
-class RendererRequest:
-    command: str
-    params: Mapping[str, Any]
-
-
 class RendererHost:
     """Owns the renderer child process over a newline-delimited JSON stdio.
 

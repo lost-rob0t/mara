@@ -135,6 +135,11 @@ function main() {
       });
     },
   );
+  // If the plugin dies without sending Shutdown, stdin EOF must terminate
+  // the renderer so no orphan window survives.
+  process.stdin.on("close", () => {
+    app.quit();
+  });
 
   ipcMain.handle("avatar-response", (_event, response) => {
     emit(response);
