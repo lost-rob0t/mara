@@ -1,0 +1,105 @@
+# Mara 3D Avatar implementation log
+
+Branch: feature/mara-3d-avatar
+Worktree: ~/git/worktrees/mara-3d-avatar
+
+*** Mara 3D Avatar [8/8]
+
+- [X] Black-box capability inventory
+- [X] Typed avatar protocol
+- [X] AvatarActor + plugin lifecycle
+- [X] VRM renderer
+- [X] Expressions + gaze + blink
+- [X] Animation subsystem
+- [X] Audio-driven lip sync
+- [X] Mara semantic event integration
+
+## Decisions
+
+### Zara core changes: none required
+
+Zara's existing generic service-plugin API (zara.plugins.api v1) already
+provides every capability the avatar plugin needs:
+
+- PluginRuntime.configuration for [plugins.mara-avatar] settings.
+- runtime.subscribe() for canonical runtime events (presence inference).
+- runtime.start_worker() for the actor thread, event pump, and HTTP loop.
+- runtime.dispatch() for canonical runtime commands.
+
+The avatar plugin is Mara-owned, Mara-installed, and self-contained. No
+Zarathushtra worktree was created; no Zara core change was needed. Generic
+capabilities were deliberately NOT added "just in case".
+
+### Plugin identity and layout
+
+- Plugin name: mara-avatar (not pets, not waifu).
+- Mara's established plugin convention is a single-file, stdlib-only,
+  ownership-marked module in zara-plugin/ (see mara_bridge.py), installed by
+  copy into ~/.zarathushtra/plugins/. mara_avatar.py follows that convention;
+  sections: protocol, expressions, animation, lip sync, VRM library,
+  renderer host, AvatarActor, MaraAvatarPlugin.
+- The renderer is a separate Electron + Three.js + @pixiv/three-vrm app under
+  renderer/ with its own package.json; it is replaceable independently of
+  Mara and speaks a narrow stdio NDJSON protocol (RENDERER_COMMANDS).
+- Pets (zara.pets) is untouched; there is no shared code with it.
+
+### Testing
+
+- Python tests: python3 -m unittest discover -s test -p 'test_*.py' (repo
+  convention). The Zara API is stubbed with a fake module, matching
+  test_mara_bridge.py, so tests never require Zara to be installed.
+- Renderer behavior is tested against a deterministic stub renderer
+  (test/fixtures/stub_renderer.py) speaking the same stdio protocol; the real
+  Electron renderer is validated with node --check and manual desktop use.
+  Tests never spawn Electron or load real VRMs; RAM use stays bounded.
+- Bugs found during implementation each got a regression test (renderer
+  fail-fast on crash, is_running-after-start, HideWindow protocol membership,
+  event pump idle sleep).
+
+## Progress notes
+
+- Black-box inventory written: docs/avatar/waifu4-blackbox-capabilities.org.
+- Protocol layer: vocabulary constants, typed frozen AvatarState with camel
+  case status documents, strict parse_command validation (unknown ops,
+  unexpected fields, bad enums, bounds, base64, path/data exclusivity).
+- Expressions: EMOTION_EXPRESSIONS mapping + EXPRESSION_FALLBACKS chains that
+  always end at neutral; empty capability sets present optimistically.
+- Animation: AnimationController with semantic clips, bounded pending queue
+  that never queues over idle clips (reactions preempt), crossfade, seeded
+  non-repeating idle shuffle restricted to SAFE_IDLE_CLIPS, injectable
+  durations for tests.
+- Lip sync: VisemeAnalyzer over PCM16 mono (amplitude RMS, zero-crossing
+  frequency estimate in Hz, log-frequency vowel bands), smoothing/gain/
+  volume influence, analyzed/direct/hybrid modes, hard silence reset.
+- VRM library: glTF-binary validation (magic, version, JSON chunk, VRM
+  extension), content-addressed ids, metadata sidecar, path traversal guards,
+  size caps.
+- RendererHost: spawn, ready handshake, request/response with ids and
+  timeouts, fail-fast when the child dies, events queue, bounded restart with
+  backoff, deterministic shutdown (drain -> close stdin -> wait -> terminate
+  -> kill). No orphans.
+- AvatarActor: single-writer authority over typed state; presence
+  (explicit vs inferred with idle reset), emotion/expression, gestures,
+  animation deadlines, speech lifecycle (begin/audio/end/cancel with mouth
+  reset and presence restore), transform/framing, avatar load/select/delete,
+  renderer re-sync after crash recovery.
+- Plugin: localhost HTTP + SSE, strict config validation, renderer command
+  resolution (config -> env -> repo install -> data-dir install), runtime
+  event pump, failure isolation (renderer down: semantics live, load 503s),
+  crash recovery with re-sync, clean shutdown.
+- Renderer: Electron host (window lifecycle, avatar:// file protocol, stdio
+  bridge) + Three.js scene (VRM 0.x/1.0 loading, MToon, expressions,
+  procedural blink/gaze/breath/sway with seeded randomness, VRMA playback
+  with crossfades, viseme application, camera framing, lighting rig,
+  transform).
+- Semantic events: Mara can drive presence/emotion/gesture through the
+  deterministic HTTP protocol; runtime events only infer presence when
+  nothing explicit is set.
+- Emacs client: emacs/mara-avatar.el (status/show/hide/select/emotion/gesture
+  + ownership-safe installer) with ERT coverage in test/mara-avatar-test.el.
+- Standalone CLI: tools/mara-avatar — install/uninstall/doctor plus the full
+  control surface (status, import/select, emotion/gesture, animation,
+  speech lifecycle, framing/transform/gaze) over the same localhost HTTP
+  API. Emacs is now strictly optional: install and control both work from a
+  plain shell; mara-avatar.el remains a thin optional client over the same
+  protocol.

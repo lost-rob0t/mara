@@ -1,0 +1,21 @@
+{
+  "name": "mara-avatar-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mara's local VRM renderer: Three.js + @pixiv/three-vrm behind a stdio protocol",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron main.mjs"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.4.4",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true
+  }
+}
