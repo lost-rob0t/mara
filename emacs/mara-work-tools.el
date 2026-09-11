@@ -9,6 +9,7 @@
 
 (require 'cl-lib)
 (require 'json)
+(require 'seq)
 (require 'subr-x)
 (require 'url)
 (require 'url-http)
@@ -39,6 +40,13 @@
   (let ((value (mara--alist-get key input)))
     (when (and (stringp value) (not (string-empty-p value)))
       value)))
+
+(defun mara-work-tools--required-text (input key)
+  "Return required string KEY from INPUT, allowing an empty string."
+  (let ((value (mara--alist-get key input)))
+    (unless (stringp value)
+      (user-error "Tool argument %s must be a string" key))
+    value))
 
 (defun mara-work-tools--bounded-text (text)
   "Return TEXT bounded to `mara-work-tools-output-limit'."
@@ -117,7 +125,7 @@
 (defun mara-work-tools--file-write (input)
   "Write UTF-8 text file selected by INPUT."
   (let* ((path (mara-work-tools--path input))
-         (content (mara-tools--required-string input "content"))
+         (content (mara-work-tools--required-text input "content"))
          (parent (file-name-directory path)))
     (when parent
       (make-directory parent t))
@@ -222,15 +230,17 @@
        (result . ,(prin1-to-string result))))))
 
 (defun mara-work-tools--bash (input)
-  "Execute one shell command from INPUT with a bounded timeout."
+  "Execute one Bash command from INPUT with a bounded timeout."
   (let* ((command (mara-tools--required-string input "command"))
          (directory (mara-work-tools--directory input))
+         (bash (or (executable-find "bash")
+                   (user-error "bash is not available in PATH")))
          (timeout-bin (executable-find "timeout"))
-         (program (or timeout-bin shell-file-name))
+         (program (or timeout-bin bash))
          (args (if timeout-bin
                    (list (format "%ds" mara-work-tools-command-timeout)
-                         shell-file-name shell-command-switch command)
-                 (list shell-command-switch command)))
+                         bash "-lc" command)
+                 (list "-lc" command)))
          (result (mara-work-tools--process program args directory))
          (bounded (mara-work-tools--bounded-text (cdr result))))
     (mara-tools--json
@@ -271,6 +281,11 @@
       (unwind-protect
           (with-current-buffer buffer
             (goto-char (point-min))
+            (when (and (boundp 'url-http-response-status)
+                       url-http-response-status
+                       (>= url-http-response-status 400))
+              (user-error "Brave Search returned HTTP %s"
+                          url-http-response-status))
             (unless (re-search-forward "\r?\n\r?\n" nil t)
               (user-error "Malformed Brave Search response"))
             (let* ((payload
@@ -410,13 +425,13 @@
 (mara-tools-register
  (make-mara-tool
   :name "mara_bash"
-  :description "Run one Bash-compatible shell command locally with a bounded timeout and output limit."
+  :description "Run one Bash command locally with a bounded timeout and output limit."
   :capability "shell.exec"
   :input-schema
   '((type . "object")
     (properties
      . ((command . ((type . "string")
-                    (description . "Shell command to execute")))
+                    (description . "Bash command to execute")))
         (directory . ((type . "string")
                       (description . "Working directory; defaults to the current Emacs directory")))))
     (required . ["command"]))
