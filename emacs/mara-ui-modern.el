@@ -36,12 +36,12 @@
   '((mara-ui-modern--match-compact-gptel
      (1 'mara-ui-metadata-key-face t)
      (2 'mara-ui-metadata-value-face t))
-    ("^:\(GPTEL_[[:upper:]_]+\):[ \t]*\(.*\)$"
+    ("^:\\(GPTEL_[[:upper:]_]+\\):[ \t]*\\(.*\\)$"
      (1 'mara-ui-metadata-key-face t)
      (2 'mara-ui-metadata-value-face t))
-    ("^:\(?:PROPERTIES\|END\):[ \t]*$"
+    ("^:\\(?:PROPERTIES\\|END\\):[ \t]*$"
      (0 'mara-ui-metadata-boundary-face t))
-    ("^#\+\(title\|category\|filetags\|property\):[ \t]*\(.*\)$"
+    ("^#\\+\\(title\\|category\\|filetags\\|property\\):[ \t]*\\(.*\\)$"
      (1 'mara-ui-metadata-key-face t)
      (2 'mara-ui-metadata-value-face t)))
   "Extra font-lock rules used in `mara-mode'.")
@@ -126,8 +126,8 @@ Point must be at the beginning of a :PROPERTIES: line."
     (or (mara-ui-modern--gptel-drawer-end-at-point)
         (point-min))))
 
-(defun mara-ui-modern--ensure-header (original &rest _args)
-  "Around advice for ORIGINAL that keeps one stable metadata preamble."
+(defun mara-ui-modern--ensure-header (_original &rest _args)
+  "Around advice that keeps one stable Mara/gptel metadata preamble."
   (mara-ui-modern--normalize-preamble)
   (if (mara-ui-modern--header-present-p)
       nil
@@ -143,8 +143,6 @@ Point must be at the beginning of a :PROPERTIES: line."
        "#+filetags: :mara:gptel:\n"
        (format "#+property: mara_session %s\n\n"
                (mara-session-id mara-session-current))))
-    ;; ORIGINAL is intentionally not called here: its point-min-only test is
-    ;; the source of the duplicate-header loop this advice repairs.
     nil))
 
 (defun mara-ui-modern--compact-summary (key value)
@@ -160,7 +158,7 @@ Point must be at the beginning of a :PROPERTIES: line."
 (defun mara-ui-modern--match-compact-gptel (limit)
   "Font-lock matcher that compacts large gptel metadata values up to LIMIT."
   (when (re-search-forward
-         "^:\(GPTEL_\(?:SYSTEM\|TOOLS\)\):[ \t]*\(.*\)$"
+         "^:\\(GPTEL_\\(?:SYSTEM\\|TOOLS\\)\\):[ \t]*\\(.*\\)$"
          limit t)
     (let* ((key (match-string-no-properties 1))
            (value (match-string-no-properties 2))
