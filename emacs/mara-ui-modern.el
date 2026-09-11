@@ -46,6 +46,9 @@
      (2 'mara-ui-metadata-value-face t)))
   "Extra font-lock rules used in `mara-mode'.")
 
+(defvar-local mara-ui-modern--font-lock-installed nil
+  "Non-nil after modern metadata font locking is installed in this buffer.")
+
 (defun mara-ui-modern--preamble-end ()
   "Return a marker at the end of Mara's metadata preamble."
   (save-excursion
@@ -173,9 +176,12 @@ Point must be at the beginning of a :PROPERTIES: line."
 
 (defun mara-ui-modern--enable-font-lock ()
   "Install Mara's compact metadata font locking in the current buffer."
-  (font-lock-add-keywords nil mara-ui-modern--font-lock-keywords 'append)
-  (when (boundp 'font-lock-extra-managed-props)
-    (add-to-list (make-local-variable 'font-lock-extra-managed-props) 'display))
+  (unless mara-ui-modern--font-lock-installed
+    (font-lock-add-keywords nil mara-ui-modern--font-lock-keywords 'append)
+    (when (boundp 'font-lock-extra-managed-props)
+      (make-local-variable 'font-lock-extra-managed-props)
+      (add-to-list 'font-lock-extra-managed-props 'display))
+    (setq mara-ui-modern--font-lock-installed t))
   (when (fboundp 'font-lock-flush)
     (font-lock-flush)))
 
