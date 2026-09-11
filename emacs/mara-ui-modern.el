@@ -167,11 +167,15 @@ Point must be at the beginning of a :PROPERTIES: line."
            (value (match-string-no-properties 2))
            (start (match-beginning 2))
            (end (match-end 2))
+           (saved-match-data (match-data))
            (summary (mara-ui-modern--compact-summary key value)))
       (when (< start end)
         (put-text-property
          start end 'display
          (propertize summary 'face 'mara-ui-metadata-chip-face)))
+      ;; `split-string' in the summary path may disturb regexp match data.
+      ;; Font-lock still needs groups 1 and 2 after this matcher returns.
+      (set-match-data saved-match-data)
       t)))
 
 (defun mara-ui-modern--enable-font-lock ()
