@@ -15,7 +15,9 @@
 (require 'mara-visual)
 (require 'mara-zara)
 (require 'mara-gptel)
+(require 'mara-work-tools)
 (require 'mara-ui)
+(require 'mara-ui-modern)
 
 (defconst mara-source-directory
   (file-name-directory (or load-file-name buffer-file-name))
@@ -40,9 +42,11 @@ instead of pulling whichever development branch happens to be checked out."
     "mara-session"
     "mara-visual"
     "mara-tools"
+    "mara-work-tools"
     "mara-context"
     "mara-gptel"
     "mara-ui"
+    "mara-ui-modern"
     "mara-zara"
     "mara")
   "Mara source libraries in dependency-safe reload order.")
