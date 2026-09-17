@@ -45,5 +45,5 @@ jobs:
           emacs -Q --batch -l package --eval '(package-initialize)'
           -L emacs -L test -l test/mara-test.el -l test/mara-native-test.el
           -l test/mara-tools-test.el -l test/mara-daily-test.el
-          -l test/mara-zara-test.el -l test/mara-avatar-test.el
-          -f ert-run-tests-batch-and-exit
+          -l test/mara-zara-test.el -l test/mara-zara-dialogue-test.el
+          -l test/mara-avatar-test.el -f ert-run-tests-batch-and-exit
